@@ -1,14 +1,15 @@
 //! rollup state on client size.
 
 use super::RollupHash as Hash;
-use super::{hash_key, tree_index, TreeIndex};
+use super::{hash_key, tree_index, TreeIndex, MAX_TREE_DEPTH};
 use alloc::collections::btree_map::BTreeMap;
 #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
 use alloc::vec::Vec;
 use codec::{Decode, Encode};
 
-// only 15 to be able to index hashes with u16
-const MAX_TREE_DEPTH: usize = 15;
+// TODO init from file then write at end by using seek first
+use std::io::{Seek, Write, Read};
+
 
 // very small state size, expect hash collisions (jut fail on hash collision: we store key so we
 // can see if hash collision)_
@@ -27,13 +28,13 @@ pub struct MerkleTree {
 }
 
 impl MerkleTree {
-		pub fn root(&self) -> Hash {
-			return self.hashes[0];
-		}
+    pub fn root(&self) -> Hash {
+        return self.hashes[0];
+    }
 
-		pub fn insert(&mut self, ix: TreeIndex, value_hash: Hash) {
-			unimplemented!();
-		}
+    pub fn insert(&mut self, ix: TreeIndex, value_hash: Hash) {
+        unimplemented!();
+    }
 }
 
 impl Default for MerkleTree {
@@ -53,24 +54,55 @@ pub struct State {
 
 impl State {}
 
-#[derive(Clone)]
-pub struct StateTree<V: Clone> {
+// just write all added key value and replay when opening
+pub struct SerializedState {}
+
+pub struct StateTree<V: Clone + Decode + Encode> {
     indexes: BTreeMap<Vec<u8>, TreeIndex>,
     values: BTreeMap<TreeIndex, Value<V>>,
     tree: MerkleTree,
+    log_file: Option<std::fs::File>,
+    log: std::collections::VecDeque<(Vec<u8>, Vec<u8>)>,
 }
 
-impl<V: Clone> Default for StateTree<V> {
+impl<V: Clone + Decode + Encode> Drop for StateTree<V> {
+    fn drop(&mut self) {
+        self.flush_log();
+    }
+}
+
+impl<V: Clone + Decode + Encode> Default for StateTree<V> {
     fn default() -> Self {
         Self {
             indexes: Default::default(),
             values: Default::default(),
             tree: Default::default(),
+            log: std::collections::VecDeque::new(),
+            log_file: None,
         }
     }
 }
 
-impl<V: Clone + Encode> StateTree<V> {
+impl<V: Clone + Decode + Encode> StateTree<V> {
+    fn from_file(mut file: std::fs::File) -> Self {
+        let mut result = Self::default();
+        let mut buf_reader = codec::IoReader(std::io::BufReader::new(&mut file));
+        while let Ok(item) = <(Vec<u8>, Vec<u8>)>::decode(&mut buf_reader) {
+            let v = V::decode(&mut item.1.as_slice()).unwrap();
+            result.insert(item.0, v);
+        }
+        result.log_file = Some(file);
+				result
+    }
+    fn flush_log(&mut self) {
+        let Some(file) = self.log_file.as_mut() else {return };
+        file.seek(std::io::SeekFrom::End(0)).unwrap();
+        while let Some(item) = self.log.pop_front() {
+            file.write_all(&item.encode()).unwrap();
+        }
+        file.flush().unwrap();
+    }
+
     // TODO rem?
     fn get_value(&self, k: &[u8]) -> Option<&Value<V>> {
         let i = self.indexes.get(k)?;
@@ -94,20 +126,14 @@ impl<V: Clone + Encode> StateTree<V> {
             };
             existing.item.encoded = v.encode();
             existing.value = v;
-						self.tree.insert(ix, hash_key(&existing.item.encode()));
+            self.tree.insert(ix, hash_key(&existing.item.encode()));
         } else {
-					let item = TreeItem {
-                        key: k.clone(),
-                        encoded: v.encode(),
-                    };
-						self.tree.insert(ix, hash_key(&item.encode()));
-            self.values.insert(
-                ix,
-                Value {
-                    item,
-                    value: v,
-                },
-            );
+            let item = TreeItem {
+                key: k.clone(),
+                encoded: v.encode(),
+            };
+            self.tree.insert(ix, hash_key(&item.encode()));
+            self.values.insert(ix, Value { item, value: v });
             self.indexes.insert(k, ix);
         }
 
@@ -115,10 +141,10 @@ impl<V: Clone + Encode> StateTree<V> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Encode, Decode)]
 pub struct Account {}
 
-#[derive(Clone)]
+#[derive(Clone, Encode, Decode)]
 pub struct Token {}
 
 #[derive(Clone, Encode, Decode)]

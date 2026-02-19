@@ -39,6 +39,11 @@ TODO different accumulate reconciliation :
 
 Rollup state progress is only effective when accumulate change stored root.
 
+In this we simply commit client side optimitically and have no rollback, so on first error in accumulate, our client procducing
+workitems will be out of sync.
+
+In real application, client would audit the accumulate (eg by runing a jam node).
+
 A client seeing a changed root, must sync its internal state db to match it, depending on concurency handling, it will use:
 - single workpayload: the workpayload in datalake that produced the workitem for this accumulate step.
 - others: the accumulate workitems contains needed data.
