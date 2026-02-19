@@ -2,6 +2,8 @@
 // as well as support for storage access and the actual accumulation logic.
 
 use crate::refinement::Operation;
+#[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
+use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use jam_pvm_common::{info, warn};
 use jam_types::{TransferRecord, WorkItemRecord};
