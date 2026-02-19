@@ -210,7 +210,7 @@ dependencies = [
  "jam-codec",
  "jam-types",
  "picoalloc",
- "polkavm-derive 0.29.0",
+ "polkavm-derive",
 ]
 
 [[package]]
@@ -278,25 +278,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6e1912f9b1d3aea43590e3986afdcf4ed1d9662edae24744a095738157d65b6a"
 
 [[package]]
-name = "picosimd"
-version = "0.9.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f8cf1ae70818c6476eb2da0ac8f3f55ecdea41a7aa16824ea6efc4a31cccf41"
-
-[[package]]
 name = "polkavm-common"
 version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f634b46a6a47a5de381f56d1d8cced9f8640d063b2b1a44b0da6dbef91bbd400"
-
-[[package]]
-name = "polkavm-common"
-version = "0.31.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0a3e43fa1a54b955a2f9422b1690c3cc29252ac8828c02a99d2370b9f2a188e"
-dependencies = [
- "picosimd",
-]
 
 [[package]]
 name = "polkavm-derive"
@@ -304,16 +289,7 @@ version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37ba6256c003853b6adb5dc8394e0e1882a9545ee3bec4e4ce533e7e4f488825"
 dependencies = [
- "polkavm-derive-impl-macro 0.29.0",
-]
-
-[[package]]
-name = "polkavm-derive"
-version = "0.31.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3d944b6b4e792c2a120232b52bd6f2c9dd3071d3f48462afb2b5d00cb9f7ac9"
-dependencies = [
- "polkavm-derive-impl-macro 0.31.0",
+ "polkavm-derive-impl-macro",
 ]
 
 [[package]]
@@ -322,19 +298,7 @@ version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "90751404f08622c8a671695605cfc1bd83ec091339bd3258a37acc7a931c8741"
 dependencies = [
- "polkavm-common 0.29.0",
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "polkavm-derive-impl"
-version = "0.31.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57c14b030150f81dfde110997b6fafc19741998130908fdab85f1a66bb735025"
-dependencies = [
- "polkavm-common 0.31.0",
+ "polkavm-common",
  "proc-macro2",
  "quote",
  "syn",
@@ -346,17 +310,7 @@ version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "10e463de593b485c8685d42737aae81c24005dba967deaaaccbb6f3e936d8596"
 dependencies = [
- "polkavm-derive-impl 0.29.0",
- "syn",
-]
-
-[[package]]
-name = "polkavm-derive-impl-macro"
-version = "0.31.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3fcadb13edfcc3b4046fcd2d292597782f5b7a2af140e6363fbf71fe196b425"
-dependencies = [
- "polkavm-derive-impl 0.31.0",
+ "polkavm-derive-impl",
  "syn",
 ]
 
@@ -488,18 +442,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "token-ledger"
-version = "0.1.0"
-dependencies = [
- "hex",
- "jam-codec",
- "jam-pvm-common",
- "jam-types",
- "polkavm-derive 0.31.0",
- "token-ledger-common",
-]
-
-[[package]]
 name = "token-ledger-common"
 version = "0.1.0"
 dependencies = [
@@ -533,9 +475,9 @@ dependencies = [
 
 [[package]]
 name = "toml_parser"
-version = "1.0.6+spec-1.1.0"
+version = "1.0.9+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3198b4b0a8e11f09dd03e133c0280504d0801269e9afa46362ffde1cbeebf44"
+checksum = "702d4415e08923e7e1ef96cd5727c0dfed80b4d2fa25db9647fe5eb6f7c5a4c4"
 dependencies = [
  "winnow",
 ]
@@ -581,6 +523,6 @@ checksum = "b97154e67e32c85465826e8bcc1c59429aaaf107c1e4a9e53c8d8ccd5eff88d0"
 
 [[package]]
 name = "zmij"
-version = "1.0.19"
+version = "1.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ff05f8caa9038894637571ae6b9e29466c1f4f829d26c9b28f869a29cbe3445"
+checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"

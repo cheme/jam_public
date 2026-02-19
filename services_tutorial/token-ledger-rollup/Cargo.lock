@@ -488,18 +488,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "token-ledger"
-version = "0.1.0"
-dependencies = [
- "hex",
- "jam-codec",
- "jam-pvm-common",
- "jam-types",
- "polkavm-derive 0.31.0",
- "token-ledger-common",
-]
-
-[[package]]
 name = "token-ledger-common"
 version = "0.1.0"
 dependencies = [
@@ -508,6 +496,18 @@ dependencies = [
  "jam-pvm-common",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "token-ledger-rollup"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "jam-codec",
+ "jam-pvm-common",
+ "jam-types",
+ "polkavm-derive 0.31.0",
+ "token-ledger-common",
 ]
 
 [[package]]
