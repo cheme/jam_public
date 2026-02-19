@@ -13,3 +13,11 @@ jam-types = { version = "0.1.26", default-features = false }
 polkavm-derive = "0.31.0"
 codec = { version = "0.1.1", default-features = false, package = "jam-codec" }
 hex = { version = "0.4.3", default-features = false }
+
+[features]
+default = ["single_payload", "drop_all_on_fail"]
+single_payload = []
+single_package = []
+multiple = []
+drop_all_on_fail = []
+track_fail = []

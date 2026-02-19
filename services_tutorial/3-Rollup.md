@@ -17,6 +17,31 @@ This tutorial will not attempt to:
 
 We thus remain at service level.
 
+## distribution
+
+simply use datalake of workpackage.
+
+## Concurrency handling
+
+Work package can define differents strategy, we define them in an enum to get all example in the same codebase choice is feature gated to ensure proper binary size.
+
+- SingleWorkpayload: single payload containing all transaction send to refine, accumulate will just update state root of rollup from a single workitem
+- SingleWorkPackage: single work package with multiple payload, accumulate will resolve new root from validated updates and partial state from multiple workitem.
+- Multiple: multiple work package, potentially at different time, add a delay for accumulation: batching multiple states.
+
+TODO different accumulate reconciliation :
+- fail all on conflict
+- fail partial: relay ops status (pass or dropped)
+- state change payload build from all passing ops (in accumulate or in client).
+
+
+## State progress
+
+Rollup state progress is only effective when accumulate change stored root.
+
+A client seeing a changed root, must sync its internal state db to match it, depending on concurency handling, it will use:
+- single workpayload: the workpayload in datalake that produced the workitem for this accumulate step.
+- others: the accumulate workitems contains needed data.
 
 ## Testing
 

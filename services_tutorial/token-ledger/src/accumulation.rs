@@ -10,6 +10,7 @@ use jam_types::{TransferRecord, WorkItemRecord};
 use token_ledger_common::{AccountId, TokenId};
 
 /// Validated operations to apply in accumulation
+/// TODO rename just Operation
 #[derive(Clone, Debug, Encode, Decode)]
 pub struct ValidatedOperation(pub Operation);
 

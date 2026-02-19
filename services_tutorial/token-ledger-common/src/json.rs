@@ -54,7 +54,7 @@ pub fn parse_signed_operations(json_bytes: &[u8]) -> Result<Vec<SignedOperation>
                     token_id,
                     amount,
                 },
-                signature: decode_signature(&signature)?,
+                signature: crate::Signature(decode_signature(&signature)?),
             }),
             OperationJson::Transfer {
                 from,
@@ -69,7 +69,7 @@ pub fn parse_signed_operations(json_bytes: &[u8]) -> Result<Vec<SignedOperation>
                     token_id,
                     amount,
                 },
-                signature: decode_signature(&signature)?,
+                signature: crate::Signature(decode_signature(&signature)?),
             }),
         })
         .collect::<Result<Vec<SignedOperation>, String>>()?;

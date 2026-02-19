@@ -5,7 +5,7 @@
 /// It is puposedly not target production-ready and must not be used as is in production.
 extern crate alloc;
 
-pub use ed25519_consensus::{Signature, VerificationKey, VerificationKeyBytes};
+pub use ed25519_consensus::{ VerificationKey, VerificationKeyBytes};
 
 // An auxiliary module for handling JSON-encoded data.
 pub mod json;
@@ -34,7 +34,7 @@ pub mod api {
     /// For this tutorial, we will define this authorization as a signature by the hard-coded admin
     /// account, covering the encoded operation.
     /// In real-world cases, developers might specify a specific format to the signature message.
-    #[derive(Clone, Debug)]
+    #[derive(Clone, Debug, Encode, Decode)]
     pub struct SignedOperation {
         pub operation: Operation,
         pub signature: Signature,
@@ -46,7 +46,7 @@ pub mod api {
         key: VerificationKey,
     ) -> Result<(), &'static str> {
         let message = op.encode();
-        key.verify(&signature, &message)
+        key.verify(&signature.0, &message)
             .map_err(|_| "Signature verification failed")
     }
 }
@@ -71,3 +71,33 @@ pub type AccountId = [u8; 32];
 /// between the same accounts.
 /// The final net balance will determine the resultant transfer direction.
 pub type Counterparts = (AccountId, AccountId);
+
+pub const SIGNATURE_LEN: usize = 64;
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub struct Signature(pub ed25519_consensus::Signature);
+
+impl codec::Encode for Signature {
+	fn encode_to<T: codec::Output + ?Sized>(&self, dest: &mut T) {
+		self.0.to_bytes().encode_to(dest)
+	}
+	fn size_hint(&self) -> usize {
+		self.0.to_bytes().size_hint()
+	}
+}
+impl codec::MaxEncodedLen for Signature {
+	fn max_encoded_len() -> usize {
+		SIGNATURE_LEN
+	}
+}
+impl codec::ConstEncodedLen for Signature {}
+impl codec::Decode for Signature {
+	fn decode<I: codec::Input>(input: &mut I) -> Result<Self, codec::Error> {
+		Ok(Self(<[u8; SIGNATURE_LEN]>::decode(input)?.into()))
+	}
+}
+impl core::fmt::Debug for Signature {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		write!(f, "Signature")
+	}
+}
+
