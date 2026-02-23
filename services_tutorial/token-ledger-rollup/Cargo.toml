@@ -13,15 +13,14 @@ jam-types = { version = "0.1.26", default-features = false }
 polkavm-derive = "0.31.0"
 codec = { version = "0.1.1", default-features = false, package = "jam-codec" }
 hex = { version = "0.4.3", default-features = false }
-blake2b_simd = { version = "1", features = [] }
+blake2b_simd = { version = "1", default-features = false }
 
 [dev-dependencies]
 codec = { version = "0.1.1", default-features = false, features = ["std"], package = "jam-codec" }
 
 [features]
-# TODO not std in feature and build client/or test require std. 
-default = ["std", "single_payload", "drop_all_on_fail"]
-std = ["codec/std"]
+default = ["single_payload", "drop_all_on_fail"]
+std = ["codec/std", "blake2b_simd/std"]
 single_payload = []
 single_package = []
 multiple = []

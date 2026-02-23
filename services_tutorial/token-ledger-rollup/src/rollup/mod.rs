@@ -50,3 +50,18 @@ pub fn tree_index_from_key(k: &[u8]) -> TreeIndex {
     let b: [u8; 2] = [hash[0], hash[1] & (255 << 1)];
     TreeIndex::from_le_bytes(b)
 }
+
+/// Hash to include in merkle structure for a given value.
+trait HashValue {
+    fn hash_value(&self) -> RollupHash;
+}
+
+pub fn hash_sequence<V: HashValue>(values: &[V]) -> RollupHash {
+    let mut hasher = blake2b::State::new();
+    for v in values {
+        hasher.update(v.hash_value().as_slice());
+    }
+    let mut res = EMPTY_HASH;
+    res.copy_from_slice(&hasher.finalize().as_bytes()[0..32]);
+    res
+}
