@@ -4,9 +4,7 @@
 pub use blake2b_simd as blake2b;
 pub use jam_types::Hash as RollupHash;
 
-#[cfg(not(any(target_arch = "riscv32", target_arch = "riscv64")))]
-#[cfg(feature = "std")]
-mod client;
+mod state;
 
 pub mod witness;
 

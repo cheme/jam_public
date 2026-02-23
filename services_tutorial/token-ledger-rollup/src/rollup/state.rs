@@ -9,6 +9,7 @@ use codec::{Decode, Encode};
 use token_ledger_common::{AccountId, TokenId};
 
 // TODO init from file then write at end by using seek first
+#[cfg(feature = "std")]
 use std::io::{Read, Seek, Write};
 
 // very small state size, expect hash collisions (jut fail on hash collision: we store key so we
@@ -58,17 +59,28 @@ impl Default for MerkleTree {
     }
 }
 
+// TODO consider removal, just std is client, not std is service
+#[repr(u8)]
+pub enum Mode {
+    // we store log and persist in file
+    // we also produce state root
+    Client,
+    // we run on state (likely initialized from witness)
+    // we do not store log
+    Service,
+}
+
 #[derive(Default)]
-pub struct State {
+pub struct State<const M: u8> {
     root: Hash,
-    balances: StateTree<Balance>,
+    balances: StateTree<Balance, M>,
     // using a second tree cause why not? Any way
     // to record a witness is fine (zk, custom merkle,
     // generic trie over encoded data...).
-    tokens: StateTree<Token>,
+    tokens: StateTree<Token, M>,
 }
 
-impl State {
+impl<const M: u8> State<M> {
     fn insert_balance(&mut self, account: AccountId, token_id: TokenId, balance: u64) {
         let to_key = token_ledger_common::balance_key(token_id, &account);
         if !self.balances.insert(to_key.to_vec(), balance) {
@@ -76,6 +88,11 @@ impl State {
         }
 
         self.update_hash();
+    }
+
+    fn get_balance(&mut self, account: AccountId, token_id: TokenId) -> Option<u64> {
+        let to_key = token_ledger_common::balance_key(token_id, &account);
+        self.balances.get(to_key.as_slice()).cloned()
     }
 
     fn update_hash(&mut self) {
@@ -90,33 +107,40 @@ impl<V: Clone + Decode + Encode + HashValue> ValueTraits for V {}
 // just write all added key value and replay when opening
 pub struct SerializedState {}
 
-pub struct StateTree<V: ValueTraits> {
+pub struct StateTree<V: ValueTraits, const M: u8> {
+    // TODO rem (TreeIndex is always hashextract of key...), yet avoid checking for existing key
     indexes: BTreeMap<Vec<u8>, TreeIndex>,
     values: BTreeMap<TreeIndex, Value<V>>,
     tree: MerkleTree,
+    #[cfg(feature = "std")]
     log_file: Option<std::fs::File>,
+    #[cfg(feature = "std")]
     log: std::collections::VecDeque<(Vec<u8>, Vec<u8>)>,
 }
 
 impl<V: ValueTraits> Drop for StateTree<V> {
     fn drop(&mut self) {
+        #[cfg(feature = "std")]
         self.flush_log();
     }
 }
 
-impl<V: ValueTraits> Default for StateTree<V> {
+impl<V: ValueTraits, const M: u8> Default for StateTree<V, M> {
     fn default() -> Self {
         Self {
             indexes: Default::default(),
             values: Default::default(),
             tree: Default::default(),
+            #[cfg(feature = "std")]
             log: std::collections::VecDeque::new(),
+            #[cfg(feature = "std")]
             log_file: None,
         }
     }
 }
 
-impl<V: ValueTraits> StateTree<V> {
+impl<V: ValueTraits, const M: u8> StateTree<V, M> {
+    #[cfg(feature = "std")]
     fn from_file(mut file: std::fs::File) -> Self {
         let mut result = Self::default();
         let mut buf_reader = codec::IoReader(std::io::BufReader::new(&mut file));
@@ -127,7 +151,11 @@ impl<V: ValueTraits> StateTree<V> {
         result.log_file = Some(file);
         result
     }
+    #[cfg(feature = "std")]
     fn flush_log(&mut self) {
+        if M != Mode::Client as u8 {
+            return;
+        }
         let Some(file) = self.log_file.as_mut() else {return };
         file.seek(std::io::SeekFrom::End(0)).unwrap();
         while let Some(item) = self.log.pop_front() {
@@ -217,7 +245,7 @@ mod tests {
 
     #[test]
     fn empty_state() {
-        let empty: State = Default::default();
+        let empty: State<{ Mode::Client as u8 }> = Default::default();
 
         assert_eq!([0; 32], empty.root);
     }
@@ -227,11 +255,13 @@ mod tests {
     }
     #[test]
     fn create_token_and_distribute() {
-        let mut state: State = Default::default();
+        let mut state: State<{ Mode::Client as u8 }> = Default::default();
 
         // TODO rem, use primitives from ops
         state.insert_balance([1; 32], 1, 10);
 
         assert!([0; 32] != state.root);
+
+        assert_eq!(Some(10), state.get_balance([1; 32], 1));
     }
 }
