@@ -9,7 +9,7 @@
 //! calc stack of first proof new hash up to common, replace with n + 1 hashes up to common and
 //! repeat.
 
-use crate::rollup::{RollupHash, TreeIndex, MAX_TREE_DEPTH};
+use crate::rollup::{RollupHash, TreeIndex, TREE_DEPTH};
 use alloc::{collections::BTreeMap, vec::Vec};
 use codec::{Decode, Encode};
 
@@ -19,13 +19,13 @@ pub struct Witness(pub Vec<WitnessItem>);
 pub struct WitnessItem {
     index: TreeIndex,
     encoded_value: Vec<u8>,
-    siblings: [RollupHash; MAX_TREE_DEPTH],
+    siblings: [RollupHash; TREE_DEPTH],
 }
 
 impl Witness {
     pub fn new_root<V: Encode>(&self, change_set: &BTreeMap<TreeIndex, V>) -> RollupHash {
         // we have a witness for each insert (insert involves a get)
-        let mut stack: [RollupHash; MAX_TREE_DEPTH] = [[0; 32]; MAX_TREE_DEPTH];
+        let mut stack: [RollupHash; TREE_DEPTH] = [[0; 32]; TREE_DEPTH];
         let mut stack_ix: u16 = 0;
         let mut prev_value: Option<&V> = None;
 

@@ -5,7 +5,9 @@
 /// It is puposedly not target production-ready and must not be used as is in production.
 extern crate alloc;
 
-pub use ed25519_consensus::{ VerificationKey, VerificationKeyBytes};
+// using consensus to avoid importing jam-std-common (quite heay import TODO feature gate it a
+// bit?).
+pub use ed25519_consensus::{VerificationKey, VerificationKeyBytes};
 
 // An auxiliary module for handling JSON-encoded data.
 pub mod json;
@@ -72,32 +74,49 @@ pub type AccountId = [u8; 32];
 /// The final net balance will determine the resultant transfer direction.
 pub type Counterparts = (AccountId, AccountId);
 
+// code from jam-std TODO feature gate std to only import these low overhead compile
+// things.
 pub const SIGNATURE_LEN: usize = 64;
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct Signature(pub ed25519_consensus::Signature);
 
 impl codec::Encode for Signature {
-	fn encode_to<T: codec::Output + ?Sized>(&self, dest: &mut T) {
-		self.0.to_bytes().encode_to(dest)
-	}
-	fn size_hint(&self) -> usize {
-		self.0.to_bytes().size_hint()
-	}
+    fn encode_to<T: codec::Output + ?Sized>(&self, dest: &mut T) {
+        self.0.to_bytes().encode_to(dest)
+    }
+    fn size_hint(&self) -> usize {
+        self.0.to_bytes().size_hint()
+    }
 }
 impl codec::MaxEncodedLen for Signature {
-	fn max_encoded_len() -> usize {
-		SIGNATURE_LEN
-	}
+    fn max_encoded_len() -> usize {
+        SIGNATURE_LEN
+    }
 }
 impl codec::ConstEncodedLen for Signature {}
 impl codec::Decode for Signature {
-	fn decode<I: codec::Input>(input: &mut I) -> Result<Self, codec::Error> {
-		Ok(Self(<[u8; SIGNATURE_LEN]>::decode(input)?.into()))
-	}
+    fn decode<I: codec::Input>(input: &mut I) -> Result<Self, codec::Error> {
+        Ok(Self(<[u8; SIGNATURE_LEN]>::decode(input)?.into()))
+    }
 }
 impl core::fmt::Debug for Signature {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		write!(f, "Signature")
-	}
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "Signature")
+    }
 }
 
+/// Storage key for an account's token balance
+/// Format: "bal:" || token_id (4 bytes LE) || account_id (32 bytes)
+pub const BALANCE_KEY_SIZE: usize = 4 + 4 + 32;
+pub fn balance_key(token_id: TokenId, account: &AccountId) -> [u8; BALANCE_KEY_SIZE] {
+    const PREFIX_BALANCE: &[u8] = b"bal:";
+    const PREFIX_LENGTH: usize = PREFIX_BALANCE.len();
+    const TOKEN_LENGTH: usize = core::mem::size_of::<TokenId>();
+    const ACCOUNT_LENGTH: usize = core::mem::size_of::<AccountId>();
+    let mut key = [0u8; PREFIX_BALANCE.len() + TOKEN_LENGTH + ACCOUNT_LENGTH];
+
+    key[..PREFIX_LENGTH].copy_from_slice(PREFIX_BALANCE);
+    key[PREFIX_LENGTH..PREFIX_LENGTH + TOKEN_LENGTH].copy_from_slice(&token_id.to_le_bytes());
+    key[PREFIX_LENGTH + TOKEN_LENGTH..].copy_from_slice(account);
+    key
+}

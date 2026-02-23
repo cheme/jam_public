@@ -7,28 +7,12 @@ use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use jam_pvm_common::{info, warn};
 use jam_types::{TransferRecord, WorkItemRecord};
-use token_ledger_common::{AccountId, TokenId};
+use token_ledger_common::{AccountId, TokenId, balance_key};
 
 /// Validated operations to apply in accumulation
 /// TODO rename just Operation
 #[derive(Clone, Debug, Encode, Decode)]
 pub struct ValidatedOperation(pub Operation);
-
-/// Storage key for an account's token balance
-/// Format: "bal:" || token_id (4 bytes LE) || account_id (32 bytes)
-pub const BALANCE_KEY_SIZE: usize = 4 + 4 + 32;
-pub fn balance_key(token_id: TokenId, account: &AccountId) -> [u8; BALANCE_KEY_SIZE] {
-    const PREFIX_BALANCE: &[u8] = b"bal:";
-    const PREFIX_LENGTH: usize = PREFIX_BALANCE.len();
-    const TOKEN_LENGTH: usize = core::mem::size_of::<TokenId>();
-    const ACCOUNT_LENGTH: usize = core::mem::size_of::<AccountId>();
-    let mut key = [0u8; PREFIX_BALANCE.len() + TOKEN_LENGTH + ACCOUNT_LENGTH];
-
-    key[..PREFIX_LENGTH].copy_from_slice(PREFIX_BALANCE);
-    key[PREFIX_LENGTH..PREFIX_LENGTH + TOKEN_LENGTH].copy_from_slice(&token_id.to_le_bytes());
-    key[PREFIX_LENGTH + TOKEN_LENGTH..].copy_from_slice(account);
-    key
-}
 
 pub fn on_transfer(item: TransferRecord) {
     use crate::alloc::string::ToString;
