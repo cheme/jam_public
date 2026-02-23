@@ -1,10 +1,8 @@
 //! rollup state on client size.
 
-
 use super::{
-RollupHash as Hash,
-    hash_key, hash_multiple, hash_pair, hash_sequence, tree_index_from_key, HashValue, TreeIndex,
-    EMPTY_HASH, TREE_DEPTH,
+    hash_key, hash_multiple, hash_pair, hash_sequence, tree_index_from_key, HashValue,
+    RollupHash as Hash, TreeIndex, EMPTY_HASH, TREE_DEPTH,
 };
 
 use alloc::collections::BTreeMap;
@@ -46,11 +44,17 @@ impl MerkleTree {
         let mut at = ix;
         let mut offset: TreeIndex = 0;
         for depth in 0..TREE_DEPTH {
-            self.hashes.insert(offset + at,  value_hash);
+            self.hashes.insert(offset + at, value_hash);
             if at % 2 == 0 {
-                hash = hash_pair(&hash, self.hashes.get(&(offset + at + 1)).unwrap_or(&EMPTY_HASH));
+                hash = hash_pair(
+                    &hash,
+                    self.hashes.get(&(offset + at + 1)).unwrap_or(&EMPTY_HASH),
+                );
             } else {
-                hash = hash_pair(self.hashes.get(&(offset + at - 1)).unwrap_or(&EMPTY_HASH), &hash);
+                hash = hash_pair(
+                    self.hashes.get(&(offset + at - 1)).unwrap_or(&EMPTY_HASH),
+                    &hash,
+                );
             }
             offset += 1 << (TREE_DEPTH - depth);
             at = at / 2;
@@ -81,7 +85,7 @@ impl State {
     }
 
     fn update_hash(&mut self) {
-	     self.root = hash_pair(self.balances.root(), &self.tokens.root);
+        self.root = hash_pair(self.balances.root(), &self.tokens.root);
     }
 }
 
@@ -168,10 +172,10 @@ impl<V: ValueTraits> StateTree<V> {
             existing.value = v;
             self.tree.insert(ix, existing.hash_value());
         } else {
-         let value = Value { key: k, value: v };
-          self.tree.insert(ix, value.hash_value());
-          self.indexes.insert(value.key.clone(), ix);
-          self.values.insert(ix, value);
+            let value = Value { key: k, value: v };
+            self.tree.insert(ix, value.hash_value());
+            self.indexes.insert(value.key.clone(), ix);
+            self.values.insert(ix, value);
         }
 
         true
@@ -193,26 +197,25 @@ pub struct KnownTokens {
 impl Drop for KnownTokens {
     fn drop(&mut self) {
         #[cfg(feature = "std")]
-				self.serialize();
+        self.serialize();
     }
 }
-       
+
 impl KnownTokens {
     fn update_hash(&mut self) {
-			if self.tokens.len() > 0 {
-        self.root = hash_sequence(self.tokens.as_slice());
-			}
-			else {
-				self.root = EMPTY_HASH;
-			}
+        if self.tokens.len() > 0 {
+            self.root = hash_sequence(self.tokens.as_slice());
+        } else {
+            self.root = EMPTY_HASH;
+        }
     }
 
     #[cfg(feature = "std")]
     fn from_file(mut file: std::fs::File) -> Self {
         let mut result = Self::default();
         let mut buf_reader = codec::IoReader(std::io::BufReader::new(&mut file));
-				result.tokens = Decode::decode(&mut buf_reader).unwrap();
-				result.update_hash();
+        result.tokens = Decode::decode(&mut buf_reader).unwrap();
+        result.update_hash();
         result.persist = Some(file);
         result
     }
@@ -220,7 +223,7 @@ impl KnownTokens {
     fn serialize(&mut self) {
         let Some(file) = self.persist.as_mut() else {return };
         file.set_len(0).unwrap();
-				file.write_all(self.tokens.encode().as_slice()).unwrap();
+        file.write_all(self.tokens.encode().as_slice()).unwrap();
         file.flush().unwrap();
     }
 }
