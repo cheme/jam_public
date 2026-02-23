@@ -127,7 +127,7 @@ impl<V: ValueTraits> Default for StateTree<V> {
 
 impl<V: ValueTraits> StateTree<V> {
     #[cfg(feature = "std")]
-    fn from_(mut file: std::fs::File) -> Self {
+    fn from_file(mut file: std::fs::File) -> Self {
         let mut result = Self::default();
         let mut buf_reader = codec::IoReader(std::io::BufReader::new(&mut file));
         while let Ok(item) = <(Vec<u8>, Vec<u8>)>::decode(&mut buf_reader) {
