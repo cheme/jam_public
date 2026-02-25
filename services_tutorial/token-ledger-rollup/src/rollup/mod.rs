@@ -4,9 +4,11 @@
 pub use blake2b_simd as blake2b;
 pub use jam_types::Hash as RollupHash;
 
-mod state;
+pub mod state;
 
-pub mod witness;
+mod transition;
+
+pub use transition::state_transition;
 
 pub type TreeIndex = u16;
 
@@ -52,16 +54,17 @@ pub fn tree_index_from_key(k: &[u8]) -> TreeIndex {
 }
 
 /// Hash to include in merkle structure for a given value.
-trait HashValue {
-    fn hash_value(&self) -> RollupHash;
+trait MerkleValue {
+    fn merkle_value(&self) -> RollupHash;
 }
 
-pub fn hash_sequence<V: HashValue>(values: &[V]) -> RollupHash {
+pub fn hash_sequence<V: MerkleValue>(values: &[V]) -> RollupHash {
     let mut hasher = blake2b::State::new();
     for v in values {
-        hasher.update(v.hash_value().as_slice());
+        hasher.update(v.merkle_value().as_slice());
     }
     let mut res = EMPTY_HASH;
     res.copy_from_slice(&hasher.finalize().as_bytes()[0..32]);
     res
 }
+

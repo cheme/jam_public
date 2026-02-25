@@ -17,6 +17,7 @@ blake2b_simd = { version = "1", default-features = false }
 
 [dev-dependencies]
 codec = { version = "0.1.1", default-features = false, features = ["std"], package = "jam-codec" }
+tempfile = { version = "3.12.0", default-features = false }
 
 [features]
 default = ["std", "single_payload", "drop_all_on_fail"]

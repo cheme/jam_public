@@ -5,12 +5,12 @@
 //! building no std.
 
 use super::{
-    hash_key, hash_multiple, hash_pair, hash_sequence, tree_index_from_key, HashValue,
+    hash_key, hash_multiple, hash_pair, hash_sequence, tree_index_from_key, MerkleValue,
     RollupHash as Hash, TreeIndex, EMPTY_HASH, TREE_DEPTH,
 };
 
 use alloc::collections::BTreeMap;
-#[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
+#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use token_ledger_common::{AccountId, TokenId};
@@ -43,12 +43,6 @@ pub struct MerkleTree {
 }
 
 impl MerkleTree {
-    fn start_processing(&self) {
-        #[cfg(feature = "std")]
-        {
-            self.witness.borrow_mut().clear();
-        }
-    }
     pub fn from_state(state: BTreeMap<TreeIndex, Hash>) -> Self {
         let mut result = Self::default();
         result.hashes = state;
@@ -77,7 +71,7 @@ impl MerkleTree {
         let mut at = ix;
         let mut offset: TreeIndex = 0;
         for depth in 0..TREE_DEPTH {
-            self.hashes.insert(offset + at, value_hash);
+            self.hashes.insert(offset + at, hash);
             if at % 2 == 0 {
                 hash = hash_pair(&hash, self.get_hash(offset + at + 1));
             } else {
@@ -86,15 +80,15 @@ impl MerkleTree {
             offset += 1 << (TREE_DEPTH - depth);
             at = at / 2;
         }
-        self.hashes.insert(offset + at, value_hash);
+
+        self.hashes.insert(offset + at, hash);
     }
 }
 
 #[derive(Default)]
 pub struct State {
-    root: Hash,
     balances: StateTree<Balance>,
-    tokens: KnownTokens,
+    known_tokens: KnownTokens,
 }
 
 #[derive(Default, Encode, Decode)]
@@ -108,20 +102,27 @@ pub struct Witness {
 
 impl State {
     #[cfg(feature = "std")]
+    pub fn from_files(balances: std::fs::File, tokens: std::fs::File) -> Self {
+        State {
+            balances: StateTree::<Balance>::from_file(balances),
+            known_tokens: KnownTokens::from_file(tokens),
+        }
+    }
+
+    #[cfg(feature = "std")]
     pub fn take_witness(&mut self) -> Witness {
-        let mut key_value_balances: Vec<(Vec<u8>, Balance)> = Default::default();
-        let mut hashes = std::mem::replace(
+        let hashes = std::mem::replace(
             self.balances.tree.witness.get_mut(),
             BTreeMap::<TreeIndex, Hash>::default(),
         );
-        let mut values = std::mem::replace(
+        let values = std::mem::replace(
             self.balances.witness_values.get_mut(),
             BTreeMap::<Vec<u8>, Balance>::default(),
         );
         return Witness {
             hashes: hashes.into_iter().collect(),
             key_value_balances: values.into_iter().collect(),
-            token_ids: std::mem::take(&mut self.tokens.witness_tokens),
+            token_ids: std::mem::take(&mut self.known_tokens.witness),
         };
     }
 
@@ -134,45 +135,39 @@ impl State {
         } else {
             return None;
         }
-        result.tokens.tokens = witness.token_ids;
-        result.tokens.update_hash();
-        result.update_hash();
+        result.known_tokens.token_ids = witness.token_ids;
         return Some(result);
     }
 
-    fn insert_balance(&mut self, account: AccountId, token_id: TokenId, balance: u64) {
-        let to_key = token_ledger_common::balance_key(token_id, &account);
-        if !self.balances.insert(to_key.to_vec(), balance) {
-            unimplemented!("error on key collision");
-        }
-        self.update_hash();
+    pub fn get_root(&self) -> Hash {
+        return hash_pair(self.balances.root(), &self.known_tokens.merkle_value());
     }
 
-    fn add_token(&mut self, token_id: TokenId) {
-        self.tokens.add_token(token_id);
-    }
-
-    fn get_balance(&self, account: AccountId, token_id: TokenId) -> Option<u64> {
+    pub fn get_balance(&self, account: AccountId, token_id: TokenId) -> Option<u64> {
         let to_key = token_ledger_common::balance_key(token_id, &account);
         self.balances.get(to_key.as_slice()).cloned()
     }
 
-    fn update_hash(&mut self) {
-        self.tokens.update_hash();
-        self.root = hash_pair(self.balances.root(), &self.tokens.root);
+    pub fn set_balance(&mut self, account: AccountId, token_id: TokenId, balance: u64) {
+        let to_key = token_ledger_common::balance_key(token_id, &account);
+        if !self.balances.set(to_key.to_vec(), balance) {
+            unimplemented!("error on key collision");
+        }
     }
-    pub fn get_root(&mut self) -> Hash {
-        self.update_hash();
-        return self.root;
+
+    pub fn known_tokens_contains(&self, token_id: TokenId) -> bool {
+        // not registering in witness as known token is always part of it.
+        return self.known_tokens.token_ids.contains(&token_id);
+    }
+
+    pub fn known_tokens_push(&mut self, token_id: TokenId) {
+        self.known_tokens.push_token(token_id);
     }
 }
 
-trait ValueTraits: Clone + Decode + Encode + HashValue {}
+trait ValueTraits: Clone + Decode + Encode + MerkleValue {}
 
-impl<V: Clone + Decode + Encode + HashValue> ValueTraits for V {}
-
-// just write all added key value and replay when opening
-pub struct SerializedState {}
+impl<V: Clone + Decode + Encode + MerkleValue> ValueTraits for V {}
 
 pub struct StateTree<V: ValueTraits> {
     // TODO rem (TreeIndex is always hashextract of key...), yet avoid checking for existing key
@@ -214,7 +209,7 @@ impl<V: ValueTraits> StateTree<V> {
         let mut buf_reader = codec::IoReader(std::io::BufReader::new(&mut file));
         while let Ok(item) = <(Vec<u8>, Vec<u8>)>::decode(&mut buf_reader) {
             let v = V::decode(&mut item.1.as_slice()).unwrap();
-            result.insert(item.0, v);
+            result.set(item.0, v);
         }
         result.persist = Some(file);
         result
@@ -253,7 +248,7 @@ impl<V: ValueTraits> StateTree<V> {
     }
 
     // fail on key collision by returning false
-    pub fn insert(&mut self, k: Vec<u8>, v: V) -> bool {
+    pub fn set(&mut self, k: Vec<u8>, v: V) -> bool {
         let ix = tree_index_from_key(&k);
         if let Some(existing) = self.values.get_mut(&ix) {
             #[cfg(feature = "std")]
@@ -266,10 +261,10 @@ impl<V: ValueTraits> StateTree<V> {
                 return false;
             };
             existing.value = v;
-            self.tree.insert(ix, existing.hash_value());
+            self.tree.insert(ix, existing.merkle_value());
         } else {
             let value = Value { key: k, value: v };
-            self.tree.insert(ix, value.hash_value());
+            self.tree.insert(ix, value.merkle_value());
             self.indexes.insert(value.key.clone(), ix);
             self.values.insert(ix, value);
         }
@@ -303,7 +298,7 @@ impl<V: ValueTraits> StateTree<V> {
                 key: key.clone(),
                 value,
             };
-            result.tree.insert(ix, value_tuple.hash_value());
+            result.tree.insert(ix, value_tuple.merkle_value());
             if result.root() != &witness_root {
                 return None;
             }
@@ -321,13 +316,11 @@ impl<V: ValueTraits> StateTree<V> {
 
 #[derive(Default)]
 pub struct KnownTokens {
-    tokens: Vec<TokenId>,
-    // default hash on 0 len vec
-    root: Hash,
+    token_ids: Vec<TokenId>,
     #[cfg(feature = "std")]
     persist: Option<std::fs::File>,
     #[cfg(feature = "std")]
-    witness_tokens: Vec<TokenId>,
+    witness: Vec<TokenId>,
 }
 
 impl Drop for KnownTokens {
@@ -337,21 +330,22 @@ impl Drop for KnownTokens {
     }
 }
 
-impl KnownTokens {
-    fn update_hash(&mut self) {
-        if self.tokens.len() > 0 {
-            self.root = hash_sequence(self.tokens.as_slice());
+impl MerkleValue for KnownTokens {
+    fn merkle_value(&self) -> Hash {
+        if self.token_ids.len() > 0 {
+            hash_sequence(self.token_ids.as_slice())
         } else {
-            self.root = EMPTY_HASH;
+            EMPTY_HASH
         }
     }
+}
 
+impl KnownTokens {
     #[cfg(feature = "std")]
     fn from_file(mut file: std::fs::File) -> Self {
         let mut result = Self::default();
         let mut buf_reader = codec::IoReader(std::io::BufReader::new(&mut file));
-        result.tokens = Decode::decode(&mut buf_reader).unwrap();
-        result.update_hash();
+        result.token_ids = Decode::decode(&mut buf_reader).unwrap();
         result.persist = Some(file);
         result
     }
@@ -359,29 +353,29 @@ impl KnownTokens {
     fn serialize(&mut self) {
         let Some(file) = self.persist.as_mut() else {return };
         file.set_len(0).unwrap();
-        file.write_all(self.tokens.encode().as_slice()).unwrap();
+        file.write_all(self.token_ids.encode().as_slice()).unwrap();
         file.flush().unwrap();
     }
 
-    fn add_token(&mut self, token_id: TokenId) {
-        if !self.tokens.iter().any(|t| t == &token_id) {
-            self.tokens.push(token_id);
+    fn push_token(&mut self, token_id: TokenId) {
+        if !self.token_ids.iter().any(|t| t == &token_id) {
+            self.token_ids.push(token_id);
         }
     }
 }
 
 pub type Balance = u64;
 
-impl HashValue for Balance {
-    fn hash_value(&self) -> Hash {
+impl MerkleValue for Balance {
+    fn merkle_value(&self) -> Hash {
         let mut result = [0; 32];
         result[0..8].copy_from_slice(u64::to_le_bytes(*self).as_slice());
         result
     }
 }
 
-impl HashValue for TokenId {
-    fn hash_value(&self) -> Hash {
+impl MerkleValue for TokenId {
+    fn merkle_value(&self) -> Hash {
         let mut result = [0; 32];
         // could actually put 8 tokenid per hash_value, no need here
         result[0..4].copy_from_slice(u32::to_le_bytes(*self).as_slice());
@@ -395,9 +389,9 @@ pub struct Value<V> {
     key: Vec<u8>,
 }
 
-impl<V: HashValue> HashValue for Value<V> {
-    fn hash_value(&self) -> Hash {
-        hash_multiple(&[self.value.hash_value().as_slice(), self.key.as_slice()])
+impl<V: MerkleValue> MerkleValue for Value<V> {
+    fn merkle_value(&self) -> Hash {
+        hash_multiple(&[self.value.merkle_value().as_slice(), self.key.as_slice()])
     }
 }
 
@@ -409,7 +403,7 @@ mod tests {
     fn empty_state() {
         let empty: State = Default::default();
 
-        assert_eq!([0; 32], empty.root);
+        assert_eq!([0; 32], empty.get_root());
     }
     #[test]
     fn check_constants() {
@@ -419,35 +413,60 @@ mod tests {
     fn create_token_and_distribute() {
         let mut state: State = Default::default();
 
-        state.insert_balance([1; 32], 1, 10);
+        state.set_balance([1; 32], 1, 10);
 
-        assert!([0; 32] != state.root);
+        assert!([0; 32] != state.get_root());
 
         let witness_1 = state.take_witness();
         let mut state2 = State::from_witness(witness_1).unwrap();
-        state2.insert_balance([1; 32], 1, 10);
+        state2.set_balance([1; 32], 1, 10);
         assert_eq!(state.get_root(), state2.get_root());
 
         assert_eq!(Some(10), state.get_balance([1; 32], 1));
         // get balance witness
         let witness_2 = state.take_witness();
-        let mut state3 = State::from_witness(witness_2).unwrap();
+        let state3 = State::from_witness(witness_2).unwrap();
         assert_eq!(state.get_root(), state3.get_root());
         assert_eq!(Some(10), state3.get_balance([1; 32], 1));
 
-
-				// insert token and insert another value
-        state.insert_balance([8; 32], 2, 32);
-				state.add_token(1);
-				state.add_token(2);
+        // insert token and insert another value
+        state.set_balance([8; 32], 2, 32);
+        state.known_tokens_push(1);
+        state.known_tokens_push(2);
         let witness_3 = state.take_witness();
 
         let mut state4 = State::from_witness(witness_3).unwrap();
-        state4.insert_balance([8; 32], 2, 32);
-				state4.add_token(1);
-				state4.add_token(2);
+        assert_eq!(state3.get_root(), state4.get_root());
+        state4.set_balance([8; 32], 2, 32);
+        state4.known_tokens_push(1);
+        state4.known_tokens_push(2);
         assert_eq!(state.get_root(), state4.get_root());
 
+        // test serialize
+        let dir = tempfile::tempdir().unwrap();
+        let mut balances_file_path = dir.path().to_path_buf();
+        balances_file_path.push("balances");
+        let mut tokens_file_path = dir.path().to_path_buf();
+        tokens_file_path.push("tokens");
+        let balances_file = std::fs::File::create_new(&balances_file_path).unwrap();
+        let tokens_file = std::fs::File::create_new(&tokens_file_path).unwrap();
+        state.balances.persist = Some(balances_file);
+        state.known_tokens.persist = Some(tokens_file);
+        let root_bef_ser = state.get_root();
+        core::mem::drop(state);
 
+        let balances_file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&balances_file_path)
+            .unwrap();
+        let tokens_file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&tokens_file_path)
+            .unwrap();
+        let state_from_ser = State::from_files(balances_file, tokens_file);
+
+        assert_eq!(root_bef_ser, state_from_ser.get_root());
     }
 }

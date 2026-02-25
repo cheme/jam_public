@@ -21,7 +21,7 @@ use token_ledger_common::VerificationKey;
 
 mod accumulation;
 mod refinement;
-mod rollup;
+pub mod rollup;
 
 use token_ledger_common::json;
 
@@ -87,13 +87,13 @@ impl Service for TokenLedgerRollup {
             // TODO also just encode json to encoded so no longer json in refine/accumulate
             // TODO an util to pipe json to encoded payload file -> this file attach also previous
             // root and call on it.
-            let token_ledger_common::api::SignedOperation {
+            let token_ledger_common::SignedOperation {
                 operation,
                 signature,
             } = signed_op;
 
             match operation {
-                token_ledger_common::api::Operation::Mint { amount, .. } => {
+                token_ledger_common::Operation::Mint { amount, .. } => {
                     let admin_key: VerificationKey =
                         VerificationKey::try_from(token_ledger_common::admin())
                             .expect("Hard-coded Admin key");
@@ -112,7 +112,7 @@ impl Service for TokenLedgerRollup {
                         continue;
                     }
                 }
-                token_ledger_common::api::Operation::Transfer { .. } => {
+                token_ledger_common::Operation::Transfer { .. } => {
                     warn!("unimpl");
                 }
             }

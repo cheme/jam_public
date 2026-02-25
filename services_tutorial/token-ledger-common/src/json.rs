@@ -1,6 +1,6 @@
 // This module handles the JSON-related logic for the token ledger service.
 use super::TokenId;
-use crate::api::{Operation, SignedOperation};
+use crate::{Operation, SignedOperation};
 #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
 use alloc::{format, string::String, vec::Vec};
 use ed25519_consensus::Signature;

@@ -6,7 +6,7 @@ use token_ledger_common::{AccountId, Counterparts, TokenId};
 use alloc::vec::Vec;
 
 // ledger api directly used by refine.
-pub use token_ledger_common::api::{SignedOperation, verify_signature};
+pub use token_ledger_common::{SignedOperation, verify_signature};
 
 
 #[derive(Clone, Debug, Encode, Decode)]
