@@ -60,11 +60,10 @@ impl MerkleTree {
     fn get_hash(&self, ix: TreeIndex) -> &Hash {
         if let Some(hash) = self.hashes.get(&ix) {
             #[cfg(feature = "std")]
-						if !self.witness.borrow().contains_key(&ix) {
-							self.witness.borrow_mut().insert(ix, *hash);
-						}
+            if !self.witness.borrow().contains_key(&ix) {
+                self.witness.borrow_mut().insert(ix, *hash);
+            }
             return hash;
-
         } else {
             return &EMPTY_HASH;
         }
@@ -80,15 +79,9 @@ impl MerkleTree {
         for depth in 0..TREE_DEPTH {
             self.hashes.insert(offset + at, value_hash);
             if at % 2 == 0 {
-                hash = hash_pair(
-                    &hash,
-                    self.hashes.get(&(offset + at + 1)).unwrap_or(&EMPTY_HASH),
-                );
+                hash = hash_pair(&hash, self.get_hash(offset + at + 1));
             } else {
-                hash = hash_pair(
-                    self.hashes.get(&(offset + at - 1)).unwrap_or(&EMPTY_HASH),
-                    &hash,
-                );
+                hash = hash_pair(self.get_hash(offset + at - 1), &hash);
             }
             offset += 1 << (TREE_DEPTH - depth);
             at = at / 2;
@@ -106,42 +99,46 @@ pub struct State {
 
 #[derive(Default, Encode, Decode)]
 pub struct Witness {
-	// root is part of the hashes
-	hashes: Vec<(TreeIndex, Hash)>,
-	key_value_balances: Vec<(Vec<u8>, Balance)>,
-	// Currently no operation make sense without accessing it so always store.
-	token_ids: Vec<TokenId>,
+    // root is part of the hashes
+    hashes: Vec<(TreeIndex, Hash)>,
+    key_value_balances: Vec<(Vec<u8>, Balance)>,
+    // Currently no operation make sense without accessing it so always store.
+    token_ids: Vec<TokenId>,
 }
 
 impl State {
     #[cfg(feature = "std")]
-    pub fn take_witness(&mut self, account: AccountId, token_id: TokenId, balance: u64) -> Witness {
-			let mut key_value_balances: Vec<(Vec<u8>, Balance)> = Default::default();
-			let mut hashes = std::mem::replace(self.balances.tree.witness.get_mut(), BTreeMap::<TreeIndex, Hash>::default());
-			let mut values = std::mem::replace(self.balances.witness_values.get_mut(), BTreeMap::<Vec<u8>, Balance>::default());
+    pub fn take_witness(&mut self) -> Witness {
+        let mut key_value_balances: Vec<(Vec<u8>, Balance)> = Default::default();
+        let mut hashes = std::mem::replace(
+            self.balances.tree.witness.get_mut(),
+            BTreeMap::<TreeIndex, Hash>::default(),
+        );
+        let mut values = std::mem::replace(
+            self.balances.witness_values.get_mut(),
+            BTreeMap::<Vec<u8>, Balance>::default(),
+        );
+        return Witness {
+            hashes: hashes.into_iter().collect(),
+            key_value_balances: values.into_iter().collect(),
+            token_ids: std::mem::take(&mut self.tokens.witness_tokens),
+        };
+    }
 
-			return Witness {
-				hashes: hashes.into_iter().collect(),
-				key_value_balances: values.into_iter().collect(),
-				token_ids: std::mem::take(&mut self.tokens.witness_tokens),
-			};
-
-		}
-
-		// TODO proper error
     pub fn from_witness(witness: Witness) -> Option<Self> {
-			let mut result = Self::default();
-   if let Some(balances) = StateTree::init_from_witness(&witness.hashes, witness.key_value_balances) {
-result.balances= balances;
- } else {
-	 return None;
-	 }
-result.tokens.tokens = witness.token_ids;
-result.tokens.update_hash();
-result.update_hash();
-return Some(result);
-
-		}
+        let mut result = Self::default();
+        if let Some(balances) =
+            StateTree::init_from_witness(&witness.hashes, witness.key_value_balances)
+        {
+            result.balances = balances;
+        } else {
+            return None;
+        }
+        result.tokens.tokens = witness.token_ids;
+        result.tokens.update_hash();
+        result.update_hash();
+        return Some(result);
+    }
 
     fn insert_balance(&mut self, account: AccountId, token_id: TokenId, balance: u64) {
         let to_key = token_ledger_common::balance_key(token_id, &account);
@@ -151,13 +148,22 @@ return Some(result);
         self.update_hash();
     }
 
-    fn get_balance(&mut self, account: AccountId, token_id: TokenId) -> Option<u64> {
+    fn add_token(&mut self, token_id: TokenId) {
+        self.tokens.add_token(token_id);
+    }
+
+    fn get_balance(&self, account: AccountId, token_id: TokenId) -> Option<u64> {
         let to_key = token_ledger_common::balance_key(token_id, &account);
         self.balances.get(to_key.as_slice()).cloned()
     }
 
     fn update_hash(&mut self) {
+        self.tokens.update_hash();
         self.root = hash_pair(self.balances.root(), &self.tokens.root);
+    }
+    pub fn get_root(&mut self) -> Hash {
+        self.update_hash();
+        return self.root;
     }
 }
 
@@ -227,13 +233,15 @@ impl<V: ValueTraits> StateTree<V> {
     fn get_value(&self, k: &[u8]) -> Option<&Value<V>> {
         let i = self.indexes.get(k)?;
         let v = self.values.get(i);
-				#[cfg(feature = "std")]
-				if let Some(value_v) = v.as_ref() {
-						if !self.witness_values.borrow().contains_key(&value_v.key) {
-							self.witness_values.borrow_mut().insert(value_v.key.clone(), value_v.value.clone());
-						}
-				}	
-				return v;
+        #[cfg(feature = "std")]
+        if let Some(value_v) = v.as_ref() {
+            if !self.witness_values.borrow().contains_key(&value_v.key) {
+                self.witness_values
+                    .borrow_mut()
+                    .insert(value_v.key.clone(), value_v.value.clone());
+            }
+        }
+        return v;
     }
 
     pub fn get(&self, k: &[u8]) -> Option<&V> {
@@ -248,10 +256,12 @@ impl<V: ValueTraits> StateTree<V> {
     pub fn insert(&mut self, k: Vec<u8>, v: V) -> bool {
         let ix = tree_index_from_key(&k);
         if let Some(existing) = self.values.get_mut(&ix) {
-						#[cfg(feature = "std")]
-						if !self.witness_values.borrow().contains_key(&k) {
-							self.witness_values.get_mut().insert(k.clone(), existing.value.clone());
-						}
+            #[cfg(feature = "std")]
+            if !self.witness_values.borrow().contains_key(&k) {
+                self.witness_values
+                    .get_mut()
+                    .insert(k.clone(), existing.value.clone());
+            }
             if existing.key.as_slice() != k {
                 return false;
             };
@@ -273,7 +283,7 @@ impl<V: ValueTraits> StateTree<V> {
     fn init_from_witness(
         witness_hashes: &[(TreeIndex, Hash)],
         witness_key_values: Vec<(Vec<u8>, V)>,
-//        expected_root: Option<Hash>,
+        //        expected_root: Option<Hash>,
     ) -> Option<Self> {
         let mut result = Self::default();
         // insert all witness hashes
@@ -281,12 +291,12 @@ impl<V: ValueTraits> StateTree<V> {
             result.tree.hashes.insert(*index, *hash);
         }
         let witness_root = *result.root();
-//        if expected_root
-//            .map(|expected_root| expected_root != witness_root)
-//            .unwrap_or(false)
-//        {
-//            return None;
-//        }
+        //        if expected_root
+        //            .map(|expected_root| expected_root != witness_root)
+        //            .unwrap_or(false)
+        //        {
+        //            return None;
+        //        }
         for (key, value) in witness_key_values.into_iter() {
             let ix = tree_index_from_key(key.as_slice());
             let value_tuple = Value {
@@ -352,6 +362,12 @@ impl KnownTokens {
         file.write_all(self.tokens.encode().as_slice()).unwrap();
         file.flush().unwrap();
     }
+
+    fn add_token(&mut self, token_id: TokenId) {
+        if !self.tokens.iter().any(|t| t == &token_id) {
+            self.tokens.push(token_id);
+        }
+    }
 }
 
 pub type Balance = u64;
@@ -403,11 +419,35 @@ mod tests {
     fn create_token_and_distribute() {
         let mut state: State = Default::default();
 
-        // TODO rem, use primitives from ops
         state.insert_balance([1; 32], 1, 10);
 
         assert!([0; 32] != state.root);
 
+        let witness_1 = state.take_witness();
+        let mut state2 = State::from_witness(witness_1).unwrap();
+        state2.insert_balance([1; 32], 1, 10);
+        assert_eq!(state.get_root(), state2.get_root());
+
         assert_eq!(Some(10), state.get_balance([1; 32], 1));
+        // get balance witness
+        let witness_2 = state.take_witness();
+        let mut state3 = State::from_witness(witness_2).unwrap();
+        assert_eq!(state.get_root(), state3.get_root());
+        assert_eq!(Some(10), state3.get_balance([1; 32], 1));
+
+
+				// insert token and insert another value
+        state.insert_balance([8; 32], 2, 32);
+				state.add_token(1);
+				state.add_token(2);
+        let witness_3 = state.take_witness();
+
+        let mut state4 = State::from_witness(witness_3).unwrap();
+        state4.insert_balance([8; 32], 2, 32);
+				state4.add_token(1);
+				state4.add_token(2);
+        assert_eq!(state.get_root(), state4.get_root());
+
+
     }
 }

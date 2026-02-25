@@ -19,7 +19,7 @@ blake2b_simd = { version = "1", default-features = false }
 codec = { version = "0.1.1", default-features = false, features = ["std"], package = "jam-codec" }
 
 [features]
-default = ["single_payload", "drop_all_on_fail"]
+default = ["std", "single_payload", "drop_all_on_fail"]
 std = ["codec/std", "blake2b_simd/std"]
 single_payload = []
 single_package = []
