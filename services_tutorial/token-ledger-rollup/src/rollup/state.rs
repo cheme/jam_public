@@ -5,7 +5,7 @@
 //! building no std.
 
 use super::{
-    hash_key, hash_multiple, hash_pair, hash_sequence, tree_index_from_key, MerkleValue,
+    hash_multiple, hash_pair, hash_sequence, tree_index_from_key, MerkleValue,
     RollupHash as Hash, TreeIndex, EMPTY_HASH, TREE_DEPTH,
 };
 
@@ -17,6 +17,7 @@ use token_ledger_common::{AccountId, TokenId};
 
 #[cfg(feature = "std")]
 use core::cell::RefCell;
+
 #[cfg(feature = "std")]
 use std::io::{Read, Write};
 
@@ -169,7 +170,7 @@ trait ValueTraits: Clone + Decode + Encode + MerkleValue {}
 
 impl<V: Clone + Decode + Encode + MerkleValue> ValueTraits for V {}
 
-pub struct StateTree<V: ValueTraits> {
+struct StateTree<V: ValueTraits> {
     // TODO rem (TreeIndex is always hashextract of key...), yet avoid checking for existing key
     indexes: BTreeMap<Vec<u8>, TreeIndex>,
     values: BTreeMap<TreeIndex, Value<V>>,

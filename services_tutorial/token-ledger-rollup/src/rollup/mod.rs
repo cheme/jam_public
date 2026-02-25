@@ -8,7 +8,7 @@ pub mod state;
 
 mod transition;
 
-pub use transition::state_transition;
+pub use transition::{state_transition, Operations};
 
 pub type TreeIndex = u16;
 
@@ -17,11 +17,6 @@ pub const EMPTY_HASH: RollupHash = [0u8; 32];
 
 // only 15 to be able to index hashes with u16
 const TREE_DEPTH: usize = 15;
-
-// TODO rn tree_hash
-pub fn hash_key(k: &[u8]) -> RollupHash {
-    hash_multiple(&[k])
-}
 
 pub fn hash_multiple(m: &[&[u8]]) -> RollupHash {
     if m.is_empty() || m.iter().map(AsRef::as_ref).all(<[u8]>::is_empty) {
@@ -47,7 +42,7 @@ pub fn hash_pair(h1: &RollupHash, h2: &RollupHash) -> RollupHash {
 }
 
 pub fn tree_index_from_key(k: &[u8]) -> TreeIndex {
-    let hash = hash_key(k);
+    let hash = hash_multiple(&[k]);
     // u15
     let b: [u8; 2] = [hash[0], hash[1] & (255 << 1)];
     TreeIndex::from_le_bytes(b)
@@ -58,7 +53,7 @@ trait MerkleValue {
     fn merkle_value(&self) -> RollupHash;
 }
 
-pub fn hash_sequence<V: MerkleValue>(values: &[V]) -> RollupHash {
+fn hash_sequence<V: MerkleValue>(values: &[V]) -> RollupHash {
     let mut hasher = blake2b::State::new();
     for v in values {
         hasher.update(v.merkle_value().as_slice());
@@ -67,4 +62,3 @@ pub fn hash_sequence<V: MerkleValue>(values: &[V]) -> RollupHash {
     res.copy_from_slice(&hasher.finalize().as_bytes()[0..32]);
     res
 }
-
