@@ -1,8 +1,14 @@
-#![cfg_attr(any(target_arch = "riscv32", target_arch = "riscv64"), no_std)]
+#![cfg_attr(not(feature="std"), no_std)]
 
-/// This is a simple implementation of an example, as part of a tutorial on how to build services
-/// for JAM. Although it demonstrates the basic concepts and techniques, it should is not
-/// production-ready and should not be used as is in production.
+//! This is a simple implementation of an example, as part of a tutorial on how to build services
+//! for JAM. Although it demonstrates the basic concepts and techniques, it should is not
+//! production-ready and should not be used as is in production.
+//!
+//! No error management is provided, and no consistency guarantees for persistence as this
+//! targets example/tutorial focused on others aspects.
+//!
+//! Building client or running tests requires to manually set "std" feature.
+
 extern crate alloc;
 
 use alloc::{collections::BTreeMap, vec::Vec};
