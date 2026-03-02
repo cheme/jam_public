@@ -23,7 +23,7 @@ use token_ledger::api::{AccountId, TokenId};
 use core::cell::RefCell;
 
 #[cfg(feature = "std")]
-use std::io::{Read, Write};
+use std::io::Write;
 
 // very small state size, expect hash collisions (jut fail on hash collision: we store key so we
 // can see if hash collision)_
