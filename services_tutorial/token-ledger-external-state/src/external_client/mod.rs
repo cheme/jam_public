@@ -9,11 +9,12 @@ pub mod state;
 
 mod transition;
 
-pub use transition::{state_transition, Operations};
+pub use transition::{Operations, state_transition};
 
 pub type TreeIndex = u16;
 
-// we apply rule of empty hash being all 0, and hash by empty hash being hash.
+// Empty hash is all 0, so we just use `Default` trait for most init.
+// Hash of two empty hash is the empty hash and hashing against empty hash
 pub const EMPTY_HASH: Hash = [0u8; 32];
 
 // only 15 to be able to index hashes with u16
@@ -33,12 +34,9 @@ pub fn hash_multiple(m: &[&[u8]]) -> Hash {
 }
 
 pub fn hash_pair(h1: &Hash, h2: &Hash) -> Hash {
-    if h1 == &[0u8; 32] {
-        return *h2;
-    };
-    if h2 == &[0u8; 32] {
-        return *h1;
-    };
+    if h1 == &[0u8; 32] && h2 == &[0u8; 32] {
+        return EMPTY_HASH;
+    }
     hash_multiple(&[&h1[..], &h2[..]])
 }
 

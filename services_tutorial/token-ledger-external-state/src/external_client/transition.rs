@@ -7,8 +7,8 @@ use alloc::collections::BTreeMap;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use jam_pvm_common::{info, warn};
-use token_ledger_common::{canonical_transfer, verify_signature, Operation, SignedOperation};
 use token_ledger_common::{AccountId, Counterparts, TokenId, VerificationKey};
+use token_ledger_common::{Operation, SignedOperation, canonical_transfer, verify_signature};
 
 pub type Operations = Vec<SignedOperation>;
 
@@ -55,9 +55,9 @@ pub fn state_transition(state: &mut State, operations: Operations) {
                 amount,
             } => {
                 let Ok(signer_key) = VerificationKey::try_from(from) else {
-                        warn!("Invalid 'from' account in transfer operation: {:?}", from);
-                        continue;
-                    };
+                    warn!("Invalid 'from' account in transfer operation: {:?}", from);
+                    continue;
+                };
                 if verify_signature(&operation, &signature, signer_key).is_err() {
                     warn!("Invalid signature for operation");
 

@@ -13,12 +13,12 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 use codec::{Decode, Encode};
-use jam_pvm_common::{accumulate, declare_service, error, info, Service};
+use jam_pvm_common::{Service, accumulate, declare_service, error, info};
 use jam_types::{CoreIndex, Hash, ServiceId, Slot, WorkOutput, WorkPackageHash, WorkPayload};
 
 mod accumulation;
-mod refinement;
 pub mod external_client;
+mod refinement;
 
 /// The Token Ledger Service
 pub struct TokenLedgerExternalClient;

@@ -9,8 +9,8 @@
 //! building no std.
 
 use super::{
-    hash_multiple, hash_pair, hash_sequence, tree_index_from_key, Hash, MerkleValue, TreeIndex,
-    EMPTY_HASH, TREE_DEPTH,
+    EMPTY_HASH, Hash, MerkleValue, TREE_DEPTH, TreeIndex, hash_multiple, hash_pair, hash_sequence,
+    tree_index_from_key,
 };
 
 use alloc::collections::BTreeMap;
@@ -221,7 +221,9 @@ impl<V: ValueTraits> StateTree<V> {
     }
     #[cfg(feature = "std")]
     fn serialize(&mut self) {
-        let Some(file) = self.persist.as_mut() else {return };
+        let Some(file) = self.persist.as_mut() else {
+            return;
+        };
         file.set_len(0).unwrap();
         for (_, v) in self.values.iter() {
             file.write_all((&v.key, v.value.encode()).encode().as_slice())
@@ -356,7 +358,9 @@ impl KnownTokens {
     }
     #[cfg(feature = "std")]
     fn serialize(&mut self) {
-        let Some(file) = self.persist.as_mut() else {return };
+        let Some(file) = self.persist.as_mut() else {
+            return;
+        };
         file.set_len(0).unwrap();
         file.write_all(self.token_ids.encode().as_slice()).unwrap();
         file.flush().unwrap();
