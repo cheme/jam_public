@@ -11,9 +11,7 @@
 
 extern crate alloc;
 
-use alloc::vec::Vec;
-use codec::{Decode, Encode};
-use jam_pvm_common::{Service, accumulate, declare_service, error, info};
+use jam_pvm_common::{accumulate, declare_service, info, Service};
 use jam_types::{CoreIndex, Hash, ServiceId, Slot, WorkOutput, WorkPackageHash, WorkPayload};
 
 mod accumulation;
@@ -32,38 +30,11 @@ impl Service for TokenLedgerExternalClient {
         payload: WorkPayload,
         package_hash: WorkPackageHash,
     ) -> WorkOutput {
-        //use token_ledger_common::{Counterparts, TokenId};
         info!(
             "TokenLedger refine on service {service_id:x}h for package/item {package_hash} / {item_index}"
         );
 
-        let refinement::Payload {
-            operations,
-            witness,
-        } = match refinement::Payload::decode(&mut payload.0.as_slice()) {
-            Ok(ops) => ops,
-            Err(e) => {
-                error!("Failed to parse signed operations: {}", e);
-                return Vec::new().into();
-            }
-        };
-
-        let operations_len = operations.len();
-        let opt_partial_state = crate::external_client::state::State::from_witness(witness);
-        if opt_partial_state.is_none() {
-            unimplemented!("TODO error report in work output ?");
-        }
-        let mut partial_state = opt_partial_state.unwrap();
-        let previous_root = partial_state.get_root();
-        crate::external_client::state_transition(&mut partial_state, operations);
-        let new_root = partial_state.get_root();
-
-        #[cfg(feature = "single_payload")]
-        let encoded = crate::accumulation::Operation {
-            previous_root,
-            new_root,
-        }
-        .encode();
+        let (encoded, operations_len) = refinement::refine_payload(payload.0.as_slice());
 
         info!("Refinement done over {} operations", operations_len);
         encoded.into()
