@@ -1,6 +1,8 @@
 //! accumulation
 
-use crate::rollup::RollupHash;
+use crate::external_client::Hash;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use jam_pvm_common::accumulate::{get, set};
 use jam_pvm_common::{error, info, warn};
@@ -10,12 +12,12 @@ use jam_types::WorkItemRecord;
 #[cfg(feature = "single_payload")]
 #[derive(Clone, Debug, Encode, Decode)]
 pub struct Operation {
-    pub previous_root: RollupHash,
-    pub new_root: RollupHash,
+    pub previous_root: Hash,
+    pub new_root: Hash,
 }
 
 #[cfg(feature = "single_payload")]
-type ItemAccumulate = Result<Option<RollupHash>, ()>;
+type ItemAccumulate = Result<Option<Hash>, ()>;
 
 pub fn on_work_items(items: Vec<AccumulateItem>) {
     #[cfg(not(all(feature = "single_payload", feature = "drop_all_on_fail")))]
@@ -34,11 +36,11 @@ pub fn on_work_items(items: Vec<AccumulateItem>) {
     match items_result {
         Ok(Some(new_root)) => {
             // TODO manage error
-            set("rollup_root", new_root).unwrap();
-            info!("Rollup state transition success");
+            set("external_client_root", new_root).unwrap();
+            info!("External client state transition success");
         }
         Ok(None) => {
-            info!("Rollup unchanged");
+            info!("External client state unchanged");
         }
         Err(()) => {
             error!("Mismatch root, skipping all transition");
@@ -67,11 +69,11 @@ pub fn on_work_item(record: WorkItemRecord, acc: &mut ItemAccumulate) {
         return;
     };
 
-    info!("Processing rollup state transition operations");
+    info!("Processing external state transition operations");
     let current_root = if let Ok(Some(r)) = acc {
         *r
     } else {
-        get("rollup_root").unwrap_or_default()
+        get("external_client_root").unwrap_or_default()
     };
     if op.previous_root == current_root {
         *acc = Ok(Some(op.new_root));

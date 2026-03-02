@@ -613,7 +613,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "token-ledger-rollup"
+name = "token-ledger-external-state"
 version = "0.1.0"
 dependencies = [
  "blake2b_simd",

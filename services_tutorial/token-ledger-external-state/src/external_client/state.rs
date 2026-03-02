@@ -1,12 +1,16 @@
-//! rollup state on client size.
-//! For the sake of keeping example concise, client implementation always register state
-//! and manage failible persistence, non client (pvm) do not.
+//! External client state, build over a simple fix size binary tree and linked data.
+//! For the sake of keeping this example concise, client implementation only manage
+//! two use cases (in realy world for efficiency there is many processing that can be
+//! skip for others use cases):
+//! - client (with unsafe persistence (breaks on any crash), and always registering witnesses).
+//! - pvm, no std, riscv targetting and running on partial state build from witness.
+//!
 //! Client implementation is obtain by including "std" feature, while pvm is obtain by
 //! building no std.
 
 use super::{
-    hash_multiple, hash_pair, hash_sequence, tree_index_from_key, MerkleValue,
-    RollupHash as Hash, TreeIndex, EMPTY_HASH, TREE_DEPTH,
+    hash_multiple, hash_pair, hash_sequence, tree_index_from_key, Hash, MerkleValue, TreeIndex,
+    EMPTY_HASH, TREE_DEPTH,
 };
 
 use alloc::collections::BTreeMap;

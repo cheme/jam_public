@@ -3,9 +3,9 @@
 ## Overview
 
 This tutorial extends part 2 with a focus on:
-- designing rollup like state: accounts are not stored anymore on jam state.
+- designing rollup/sidechain like state: accounts are not stored anymore on jam state.
 - discuss cost of such design.
-- use a minimal rollup state implementation only for educational purpose.
+- use a minimal external client state implementation only for educational purpose.
 
 
 This tutorial will not attempt to:
@@ -13,7 +13,7 @@ This tutorial will not attempt to:
 - be secure, we keep skipping signature checks.
 - implement state distribution: each client should sink upon the last state root read in jam state, this can be using different strategy. Here a disconnected client will lose ability to synch state if work items got pruned.
 - define proper role for distribution: every client are just validator that accessed directly the jam datalake, on a real implementation, distribution strategy must fit the usecase.
-- rollup must handle fail or success accumulate processing, here we assume it will always succeed, a failure will put client in an invalid state. TODO can we draft a simple cow state?
+- external client must handle fail or success accumulate processing, here we assume it will always succeed, a failure will put client in an invalid state. TODO can we draft a simple cow state?
 
 We thus remain at service level.
 
@@ -25,7 +25,7 @@ simply use datalake of workpackage.
 
 Work package can define differents strategy, we define them in an enum to get all example in the same codebase choice is feature gated to ensure proper binary size.
 
-- SingleWorkpayload: single payload containing all transaction send to refine, accumulate will just update state root of rollup from a single workitem
+- SingleWorkpayload: single payload containing all transaction send to refine, accumulate will just update state root of external client from a single workitem
 - SingleWorkPackage: single work package with multiple payload, accumulate will resolve new root from validated updates and partial state from multiple workitem.
 - Multiple: multiple work package, potentially at different time, add a delay for accumulation: batching multiple states.
 
@@ -54,7 +54,7 @@ This tutorial can run the same examples as the token ledger one. One will observ
 - transfer are noted in refine
 - transfer in refine are asociated with a workpackage hash and workitem (we could have a single extrinsic root)_
 - accumulate advance state root
-- accumulate display workitem processed or failure (can fail if two workpackage try to advance same rollup state: only one get processed, failure need to be handled properly though).
+- accumulate display workitem processed or failure (can fail if two workpackage try to advance same external client state: only one get processed, failure need to be handled properly though).
 
 ## TODO parallel resolution on accumulate : launch two transfer json leading to invalid. 
     - root building from prefixes

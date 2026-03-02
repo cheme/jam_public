@@ -18,13 +18,13 @@ use jam_types::{CoreIndex, Hash, ServiceId, Slot, WorkOutput, WorkPackageHash, W
 
 mod accumulation;
 mod refinement;
-pub mod rollup;
+pub mod external_client;
 
 /// The Token Ledger Service
-pub struct TokenLedgerRollup;
-declare_service!(TokenLedgerRollup);
+pub struct TokenLedgerExternalClient;
+declare_service!(TokenLedgerExternalClient);
 
-impl Service for TokenLedgerRollup {
+impl Service for TokenLedgerExternalClient {
     fn refine(
         _core_index: CoreIndex,
         item_index: usize,
@@ -49,13 +49,13 @@ impl Service for TokenLedgerRollup {
         };
 
         let operations_len = operations.len();
-        let opt_partial_state = crate::rollup::state::State::from_witness(witness);
+        let opt_partial_state = crate::external_client::state::State::from_witness(witness);
         if opt_partial_state.is_none() {
             unimplemented!("TODO error report in work output ?");
         }
         let mut partial_state = opt_partial_state.unwrap();
         let previous_root = partial_state.get_root();
-        crate::rollup::state_transition(&mut partial_state, operations);
+        crate::external_client::state_transition(&mut partial_state, operations);
         let new_root = partial_state.get_root();
 
         #[cfg(feature = "single_payload")]
