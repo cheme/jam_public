@@ -42,6 +42,7 @@ fn main() {
     token_ledger_external_state::external_client::state_transition(&mut state, &operations);
 		dbg!(state.get_root());
 		let witness = state.take_witness();
+		dbg!(&witness);
 
     let refine_payload = token_ledger_external_state::RefinePayload {
         operations,
