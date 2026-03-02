@@ -7,7 +7,7 @@ license = "Apache-2.0"
 
 
 [dependencies]
-token-ledger-common = { version = "0.1.0", path = "../token-ledger-common" }
+token-ledger = { version = "0.1.0", path = "../token-ledger" }
 jam-pvm-common = { version = "0.1.26", default-features = false, features = ["service", "logging"] }
 jam-types = { version = "0.1.26", default-features = false }
 polkavm-derive = "0.31.0"
@@ -20,7 +20,7 @@ codec = { version = "0.1.1", default-features = false, features = ["std"], packa
 tempfile = { version = "3.12.0", default-features = false }
 
 [features]
-default = ["std", "single_payload", "drop_all_on_fail"]
+default = ["single_payload", "drop_all_on_fail"]
 std = ["codec/std", "blake2b_simd/std"]
 
 # one workitem produced to accumulate, no concurency, accumulate simply change root, all is

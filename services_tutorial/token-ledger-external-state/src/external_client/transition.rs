@@ -7,8 +7,10 @@ use alloc::collections::BTreeMap;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use jam_pvm_common::{info, warn};
-use token_ledger_common::{AccountId, Counterparts, TokenId, VerificationKey};
-use token_ledger_common::{Operation, SignedOperation, canonical_transfer, verify_signature};
+use token_ledger::api::{
+    AccountId, Counterparts, Operation, SignedOperation, TokenId, VerificationKey,
+    canonical_transfer, verify_signature,
+};
 
 pub type Operations = Vec<SignedOperation>;
 
@@ -30,7 +32,7 @@ pub fn state_transition(state: &mut State, operations: Operations) {
                 token_id,
             } => {
                 let admin_key: VerificationKey =
-                    VerificationKey::try_from(token_ledger_common::admin())
+                    VerificationKey::try_from(token_ledger::api::admin())
                         .expect("Hard-coded Admin key");
 
                 if verify_signature(&operation, &signature, admin_key).is_err() {

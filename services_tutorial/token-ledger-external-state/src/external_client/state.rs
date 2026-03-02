@@ -17,7 +17,7 @@ use alloc::collections::BTreeMap;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use codec::{Decode, Encode};
-use token_ledger_common::{AccountId, TokenId};
+use token_ledger::api::{AccountId, TokenId};
 
 #[cfg(feature = "std")]
 use core::cell::RefCell;
@@ -149,12 +149,12 @@ impl State {
     }
 
     pub fn get_balance(&self, account: AccountId, token_id: TokenId) -> Option<u64> {
-        let to_key = token_ledger_common::balance_key(token_id, &account);
+        let to_key = token_ledger::api::balance_key(token_id, &account);
         self.balances.get(to_key.as_slice()).cloned()
     }
 
     pub fn set_balance(&mut self, account: AccountId, token_id: TokenId, balance: u64) {
-        let to_key = token_ledger_common::balance_key(token_id, &account);
+        let to_key = token_ledger::api::balance_key(token_id, &account);
         if !self.balances.set(to_key.to_vec(), balance) {
             unimplemented!("error on key collision");
         }

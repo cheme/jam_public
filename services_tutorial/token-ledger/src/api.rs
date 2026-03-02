@@ -1,16 +1,8 @@
-#![cfg_attr(any(target_arch = "riscv32", target_arch = "riscv64"), no_std)]
-
-/// Common code over example simple token leger implementation(s).
-/// Only for example, tutorials.
-/// It is puposedly not target production-ready and must not be used as is in production.
-extern crate alloc;
-
 // using consensus to avoid importing jam-std-common (quite heay import TODO feature gate it a
 // bit?).
 pub use ed25519_consensus::{VerificationKey, VerificationKeyBytes};
 
 // An auxiliary module for handling JSON-encoded data.
-pub mod json;
 
 use codec::{Decode, Encode};
 

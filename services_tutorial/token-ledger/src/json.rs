@@ -1,9 +1,7 @@
 // This module handles the JSON-related logic for the token ledger service.
-use super::TokenId;
-use crate::{Operation, SignedOperation};
+use crate::api::{Operation, Signature, SignedOperation, TokenId};
 #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
 use alloc::{format, string::String, vec::Vec};
-use ed25519_consensus::Signature;
 use jam_pvm_common::info;
 use serde::Deserialize;
 
@@ -54,7 +52,7 @@ pub fn parse_signed_operations(json_bytes: &[u8]) -> Result<Vec<SignedOperation>
                     token_id,
                     amount,
                 },
-                signature: crate::Signature(decode_signature(&signature)?),
+                signature: decode_signature(&signature)?,
             }),
             OperationJson::Transfer {
                 from,
@@ -69,7 +67,7 @@ pub fn parse_signed_operations(json_bytes: &[u8]) -> Result<Vec<SignedOperation>
                     token_id,
                     amount,
                 },
-                signature: crate::Signature(decode_signature(&signature)?),
+                signature: decode_signature(&signature)?,
             }),
         })
         .collect::<Result<Vec<SignedOperation>, String>>()?;
@@ -104,7 +102,8 @@ fn decode_account(s: &str) -> Result<[u8; 32], String> {
 /// Decode a hex string to a 64-byte signature
 fn decode_signature(s: &str) -> Result<Signature, String> {
     decode_hex::<64>(s)
-        .map(|bytes| Signature::from(bytes))
+        .map(|bytes| ed25519_consensus::Signature::from(bytes))
+        .map(|sig| Signature(sig))
         .map_err(|e| format!("Invalid signature hex: {}", e))
 }
 

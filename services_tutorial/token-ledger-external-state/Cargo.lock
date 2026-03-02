@@ -602,12 +602,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "token-ledger-common"
+name = "token-ledger"
 version = "0.1.0"
 dependencies = [
  "ed25519-consensus",
+ "hex",
  "jam-codec",
  "jam-pvm-common",
+ "jam-types",
+ "polkavm-derive 0.31.0",
  "serde",
  "serde_json",
 ]
@@ -623,7 +626,7 @@ dependencies = [
  "jam-types",
  "polkavm-derive 0.31.0",
  "tempfile",
- "token-ledger-common",
+ "token-ledger",
 ]
 
 [[package]]

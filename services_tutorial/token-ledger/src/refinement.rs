@@ -1,13 +1,13 @@
 // Code support for the refinement phase, including data types and expensive computations.
+use crate::api::{Counterparts, TokenId};
 use alloc::{collections::BTreeMap, vec::Vec};
 use codec::Encode;
 use jam_pvm_common::{error, info, warn};
 use jam_types::{ServiceId, WorkOutput, WorkPackageHash, WorkPayload};
-use token_ledger_common::{Counterparts, TokenId};
 
 // ledger api directly used by refine.
-pub use token_ledger_common::{
-    canonical_transfer, verify_signature, Operation, SignedOperation, VerificationKey,
+pub use crate::api::{
+    Operation, SignedOperation, VerificationKey, canonical_transfer, verify_signature,
 };
 
 pub fn refine(
@@ -22,8 +22,8 @@ pub fn refine(
     // for each possible direction. For now, we just assume that all transfers are up to i64::MAX.
     let mut staged_transfers: BTreeMap<(TokenId, Counterparts), i64> = BTreeMap::new();
     info!(
-            "TokenLedger refine on service {service_id:x}h for package/item {package_hash} / {item_index}"
-        );
+        "TokenLedger refine on service {service_id:x}h for package/item {package_hash} / {item_index}"
+    );
 
     // Parse the incoming payload as a JSON array of signed operations
     let operations: Vec<SignedOperation> = match crate::json::parse_signed_operations(&payload) {
@@ -45,8 +45,7 @@ pub fn refine(
         match operation {
             Operation::Mint { amount, .. } => {
                 let admin_key: VerificationKey =
-                    VerificationKey::try_from(token_ledger_common::admin())
-                        .expect("Hard-coded Admin key");
+                    VerificationKey::try_from(crate::api::admin()).expect("Hard-coded Admin key");
 
                 if verify_signature(&operation, &signature, admin_key).is_err() {
                     warn!("Invalid signature for operation");
@@ -70,9 +69,9 @@ pub fn refine(
                 amount,
             } => {
                 let Ok(signer_key) = VerificationKey::try_from(from) else {
-                        warn!("Invalid 'from' account in transfer operation: {:?}", from);
-                        continue;
-                    };
+                    warn!("Invalid 'from' account in transfer operation: {:?}", from);
+                    continue;
+                };
                 if verify_signature(&operation, &signature, signer_key).is_err() {
                     warn!("Invalid signature for operation");
 
