@@ -9,8 +9,8 @@
 //! building no std.
 
 use super::{
-    hash_multiple, hash_pair, hash_sequence, tree_index_from_key, Hash, MerkleValue, TreeIndex,
-    EMPTY_HASH, TREE_DEPTH,
+    EMPTY_HASH, Hash, MerkleValue, TREE_DEPTH, TreeIndex, hash_multiple, hash_pair, hash_sequence,
+    tree_index_from_key,
 };
 
 use alloc::collections::BTreeMap;
@@ -275,13 +275,13 @@ impl<V: ValueTraits> StateTree<V> {
 
     fn get_value(&self, k: &[u8]) -> Option<&Value<V>> {
         let Some(i) = self.indexes.get(k) else {
-						#[cfg(feature = "std")]
-						{
-							let ix = tree_index_from_key(&k);
-							self.tree.witness_access(ix);
-						}
-						return None;
-				};
+            #[cfg(feature = "std")]
+            {
+                let ix = tree_index_from_key(&k);
+                self.tree.witness_access(ix);
+            }
+            return None;
+        };
 
         let v = self.values.get(i);
         #[cfg(feature = "std")]

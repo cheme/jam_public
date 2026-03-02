@@ -30,9 +30,9 @@ pub fn on_work_items(items: Vec<AccumulateItem>) {
         match item {
             AccumulateItem::WorkItem(r) => on_work_item(r, &mut items_result),
             AccumulateItem::Transfer(_) => {
-							info!("Transfer not used in this example");
-							continue;
-						}
+                info!("Transfer not used in this example");
+                continue;
+            }
         }
     }
 

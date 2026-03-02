@@ -2,9 +2,9 @@
 //! - opening state from file and others.
 //! - produce refinement payload from json.
 
+use codec::Encode;
 use std::env;
 use std::io::Read;
-use codec::Encode;
 
 const HELP: &str = {
     "Build a refinement payload: 
@@ -38,15 +38,15 @@ fn main() {
         state.set_new_persist_files(balances_file, tokens_file);
         state
     };
-		dbg!(state.get_root());
+    dbg!(state.get_root());
     token_ledger_external_state::external_client::state_transition(&mut state, &operations);
-		dbg!(state.get_root());
-		let witness = state.take_witness();
-		dbg!(&witness);
+    dbg!(state.get_root());
+    let witness = state.take_witness();
+    dbg!(&witness);
 
     let refine_payload = token_ledger_external_state::RefinePayload {
         operations,
         witness,
     };
-		refine_payload.encode_to(&mut output);
+    refine_payload.encode_to(&mut output);
 }

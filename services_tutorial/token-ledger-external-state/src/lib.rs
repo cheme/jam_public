@@ -11,7 +11,7 @@
 
 extern crate alloc;
 
-use jam_pvm_common::{accumulate, declare_service, info, Service};
+use jam_pvm_common::{Service, accumulate, declare_service, info};
 use jam_types::{CoreIndex, Hash, ServiceId, Slot, WorkOutput, WorkPackageHash, WorkPayload};
 
 pub use refinement::Payload as RefinePayload;

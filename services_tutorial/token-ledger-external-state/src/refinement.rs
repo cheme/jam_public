@@ -22,10 +22,13 @@ pub fn refine_payload(mut payload: &[u8]) -> (Vec<u8>, usize) {
         }
     };
 
-
     info!("witness {:?}", &witness);
     let operations_len = operations.len();
-    info!("read payload of size {}, with {} operations", payload.len(), operations_len);
+    info!(
+        "read payload of size {}, with {} operations",
+        payload.len(),
+        operations_len
+    );
     let opt_partial_state = crate::external_client::state::State::from_witness(witness);
     if opt_partial_state.is_none() {
         error!("error loading state");
