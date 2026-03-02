@@ -104,6 +104,17 @@ impl MerkleTree {
 
         self.hashes.insert(offset + at, hash);
     }
+
+    #[cfg(feature = "std")]
+    fn take_witness(&mut self) -> BTreeMap<TreeIndex, Hash> {
+        let hashes = std::mem::replace(
+            self.witness.get_mut(),
+            BTreeMap::<TreeIndex, Hash>::default(),
+        );
+        // update for next run
+        self.hashes_for_witness = self.hashes.clone();
+        hashes
+    }
 }
 
 #[derive(Default)]
@@ -140,25 +151,11 @@ impl State {
 
     #[cfg(feature = "std")]
     pub fn take_witness(&mut self) -> Witness {
-        // take
-        let hashes = std::mem::replace(
-            self.balances.tree.witness.get_mut(),
-            BTreeMap::<TreeIndex, Hash>::default(),
-        );
-        let values = std::mem::replace(
-            self.balances.witness_values.get_mut(),
-            BTreeMap::<Vec<u8>, Balance>::default(),
-        );
-        let token_ids = std::mem::take(&mut self.known_tokens.witness);
-
-        // update for next run
-        self.balances.tree.hashes_for_witness = self.balances.tree.hashes.clone();
-        self.known_tokens.witness = self.known_tokens.token_ids.clone();
-
+        let (hashes, values) = self.balances.take_witness();
         return Witness {
             hashes: hashes.into_iter().collect(),
             key_value_balances: values.into_iter().collect(),
-            token_ids,
+            token_ids: self.known_tokens.take_witness(),
         };
     }
 
@@ -351,6 +348,17 @@ impl<V: ValueTraits> StateTree<V> {
 
         Some(result)
     }
+
+    #[cfg(feature = "std")]
+    fn take_witness(&mut self) -> (BTreeMap<TreeIndex, Hash>, BTreeMap<Vec<u8>, V>) {
+        let hashes = self.tree.take_witness();
+        let values = std::mem::replace(
+            self.witness_values.get_mut(),
+            BTreeMap::<Vec<u8>, V>::default(),
+        );
+
+        (hashes, values)
+    }
 }
 
 #[derive(Default)]
@@ -405,6 +413,13 @@ impl KnownTokens {
         if !self.token_ids.iter().any(|t| t == &token_id) {
             self.token_ids.push(token_id);
         }
+    }
+
+    #[cfg(feature = "std")]
+    fn take_witness(&mut self) -> Vec<TokenId> {
+        let token_ids = std::mem::take(&mut self.witness);
+        self.witness = self.token_ids.clone();
+        token_ids
     }
 }
 
