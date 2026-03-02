@@ -57,8 +57,10 @@ impl MerkleTree {
             #[cfg(feature = "std")]
             {
                 let hash = self.hashes_for_witness.get(&ix).unwrap_or(&EMPTY_HASH);
-                self.witness.borrow_mut().insert(ix, *hash);
-                self.witness.borrow_mut().insert(ix, *hash);
+                if hash != &EMPTY_HASH {
+                    self.witness.borrow_mut().insert(ix, *hash);
+                    self.witness.borrow_mut().insert(ix, *hash);
+                }
             }
             return hash;
         } else {
@@ -251,7 +253,6 @@ impl<V: ValueTraits> StateTree<V> {
 
         for _ in 0..nb_item {
             let v = Value::<V>::decode(&mut buf_reader).unwrap();
-            dbg!("ins", &v.key);
             result.set(v.key, v.value);
         }
         result.persist = Some(file);
