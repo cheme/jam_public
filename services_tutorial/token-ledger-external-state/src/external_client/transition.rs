@@ -14,7 +14,7 @@ use token_ledger::api::{
 
 pub type Operations = Vec<SignedOperation>;
 
-pub fn state_transition(state: &mut State, operations: Operations) {
+pub fn state_transition(state: &mut State, operations: &Operations) {
     info!("Processing external client state transition.",);
 
     let mut staged_transfers: BTreeMap<(TokenId, Counterparts), i64> = BTreeMap::new();
@@ -44,11 +44,11 @@ pub fn state_transition(state: &mut State, operations: Operations) {
                     // having to create actual signatures when passing test data to the service.
                 }
 
-                if amount == 0 {
+                if *amount == 0 {
                     warn!("Mint: Zero amount");
                     continue;
                 }
-                process_mint(state, to, token_id, amount)
+                process_mint(state, *to, *token_id, *amount)
             }
             Operation::Transfer {
                 from,
@@ -56,7 +56,7 @@ pub fn state_transition(state: &mut State, operations: Operations) {
                 token_id,
                 amount,
             } => {
-                let Ok(signer_key) = VerificationKey::try_from(from) else {
+                let Ok(signer_key) = VerificationKey::try_from(*from) else {
                     warn!("Invalid 'from' account in transfer operation: {:?}", from);
                     continue;
                 };
@@ -70,7 +70,7 @@ pub fn state_transition(state: &mut State, operations: Operations) {
                 }
 
                 // Validate transfer request
-                if amount == 0 {
+                if *amount == 0 {
                     warn!("Transfer: Zero amount");
                     continue;
                 }
@@ -78,7 +78,7 @@ pub fn state_transition(state: &mut State, operations: Operations) {
                     warn!("Transfer: Self-transfer not allowed");
                     continue;
                 }
-                let transfer = canonical_transfer(from, to, token_id, amount);
+                let transfer = canonical_transfer(*from, *to, *token_id, *amount);
                 staged_transfers
                     .entry(transfer.0)
                     .and_modify(|e| *e += transfer.1)

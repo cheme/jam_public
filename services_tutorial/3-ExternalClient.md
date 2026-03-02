@@ -56,6 +56,18 @@ This tutorial can run the same examples as the token ledger one. One will observ
 - accumulate advance state root
 - accumulate display workitem processed or failure (can fail if two workpackage try to advance same external client state: only one get processed, failure need to be handled properly though).
 
+### Prepare a payload for refinement
+
+cargo run --features=std -- ./example_payloads/op_mint.json refinement_payload
+
+This run locally the external client operations, and write a payload for refinement containing both input operations and the state witness to be able to run.
+With this mint json, there is three balance value included, with 15 hash of witness per value and hash of token plus operation, its size is already quite significant (399octet).
+at time of writing this).
+
+### Run on jam
+
+Simply use jst as in previous tutorial (use the submit-file command for work item with the produced payload refinement_payload).
+
 ## TODO parallel resolution on accumulate : launch two transfer json leading to invalid. 
     - root building from prefixes
     - merge state with both package ids -> then refine merge step (do not accept futher refine in merge state after x time). TODO plus client side a merge state should suspend until not merge and rebase tx on merged state root.

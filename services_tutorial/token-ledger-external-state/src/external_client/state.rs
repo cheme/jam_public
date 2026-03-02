@@ -9,8 +9,8 @@
 //! building no std.
 
 use super::{
-    EMPTY_HASH, Hash, MerkleValue, TREE_DEPTH, TreeIndex, hash_multiple, hash_pair, hash_sequence,
-    tree_index_from_key,
+    hash_multiple, hash_pair, hash_sequence, tree_index_from_key, Hash, MerkleValue, TreeIndex,
+    EMPTY_HASH, TREE_DEPTH,
 };
 
 use alloc::collections::BTreeMap;
@@ -23,7 +23,7 @@ use token_ledger::api::{AccountId, TokenId};
 use core::cell::RefCell;
 
 #[cfg(feature = "std")]
-use std::io::Write;
+use std::io::{Write, Seek};
 
 // very small state size, expect hash collisions (jut fail on hash collision: we store key so we
 // can see if hash collision)_
@@ -112,6 +112,12 @@ impl State {
             balances: StateTree::<Balance>::from_file(balances),
             known_tokens: KnownTokens::from_file(tokens),
         }
+    }
+
+    #[cfg(feature = "std")]
+    pub fn set_new_persist_files(&mut self, balances: std::fs::File, tokens: std::fs::File) {
+        self.balances.persist = Some(balances);
+        self.known_tokens.persist = Some(tokens);
     }
 
     #[cfg(feature = "std")]
@@ -212,9 +218,12 @@ impl<V: ValueTraits> StateTree<V> {
     fn from_file(mut file: std::fs::File) -> Self {
         let mut result = Self::default();
         let mut buf_reader = codec::IoReader(std::io::BufReader::new(&mut file));
-        while let Ok(item) = <(Vec<u8>, Vec<u8>)>::decode(&mut buf_reader) {
-            let v = V::decode(&mut item.1.as_slice()).unwrap();
-            result.set(item.0, v);
+        let nb_item = u64::decode(&mut buf_reader).unwrap();
+        dbg!("loading {} items", nb_item);
+
+        for _ in 0..nb_item {
+            let v = Value::<V>::decode(&mut buf_reader).unwrap();
+            result.set(v.key, v.value);
         }
         result.persist = Some(file);
         result
@@ -224,10 +233,11 @@ impl<V: ValueTraits> StateTree<V> {
         let Some(file) = self.persist.as_mut() else {
             return;
         };
-        file.set_len(0).unwrap();
+        file.seek(std::io::SeekFrom::Start(0)).unwrap();
+        dbg!("serializing {} items", self.values.len());
+        (self.values.len() as u64).encode_to(file);
         for (_, v) in self.values.iter() {
-            file.write_all((&v.key, v.value.encode()).encode().as_slice())
-                .unwrap();
+            v.encode_to(file);
         }
         file.flush().unwrap();
     }
@@ -361,8 +371,10 @@ impl KnownTokens {
         let Some(file) = self.persist.as_mut() else {
             return;
         };
-        file.set_len(0).unwrap();
-        file.write_all(self.token_ids.encode().as_slice()).unwrap();
+        file.seek(std::io::SeekFrom::Start(0)).unwrap();
+        let encoded = self.token_ids.encode();
+        dbg!("serializing {} token bytes", encoded.len());
+        file.write_all(encoded.as_slice()).unwrap();
         file.flush().unwrap();
     }
 
@@ -459,8 +471,7 @@ mod tests {
         tokens_file_path.push("tokens");
         let balances_file = std::fs::File::create_new(&balances_file_path).unwrap();
         let tokens_file = std::fs::File::create_new(&tokens_file_path).unwrap();
-        state.balances.persist = Some(balances_file);
-        state.known_tokens.persist = Some(tokens_file);
+        state.set_new_persist_files(balances_file, tokens_file);
         let root_bef_ser = state.get_root();
         core::mem::drop(state);
 
