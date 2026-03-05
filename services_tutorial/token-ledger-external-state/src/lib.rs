@@ -44,7 +44,7 @@ impl Service for TokenLedgerExternalClient {
     fn accumulate(slot: Slot, service_id: ServiceId, item_count: usize) -> Option<Hash> {
         info!("TokenLedger accumulate on service {service_id:x}h @{slot} with {item_count} items");
 
-        crate::accumulation::on_work_items(accumulate::accumulate_items());
+        crate::accumulation::on_accumulate_items(accumulate::accumulate_items());
         None
     }
 }

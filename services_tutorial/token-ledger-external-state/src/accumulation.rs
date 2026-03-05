@@ -19,7 +19,7 @@ pub struct Operation {
 #[cfg(feature = "single_payload")]
 type ItemAccumulate = Result<Option<Hash>, ()>;
 
-pub fn on_work_items(items: Vec<AccumulateItem>) {
+pub fn on_accumulate_items(items: Vec<AccumulateItem>) {
     #[cfg(not(all(feature = "single_payload", feature = "drop_all_on_fail")))]
     unimplemented!();
 
@@ -28,7 +28,7 @@ pub fn on_work_items(items: Vec<AccumulateItem>) {
     for item in items {
         info!("Accumulate processing work item record");
         match item {
-            AccumulateItem::WorkItem(r) => on_work_item(r, &mut items_result),
+            AccumulateItem::WorkItem(r) => on_work_item_record(r, &mut items_result),
             AccumulateItem::Transfer(_) => {
                 info!("Transfer not used in this example");
                 continue;
@@ -51,7 +51,7 @@ pub fn on_work_items(items: Vec<AccumulateItem>) {
     }
 }
 
-pub fn on_work_item(record: WorkItemRecord, acc: &mut ItemAccumulate) {
+pub fn on_work_item_record(record: WorkItemRecord, acc: &mut ItemAccumulate) {
     if acc.is_err() {
         return;
     }
