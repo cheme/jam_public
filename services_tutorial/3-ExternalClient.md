@@ -1,64 +1,80 @@
 ## Moving data out of JAM database
 
-JAM allow storing data during its accumulation phase, yet this is costy and non scalable, this accumulation centric design is very similar to the way ethereum did work at launch: a single state shared by all peers.
+JAM allows storing data during its accumulation phase, yet this is costy and non scalable, this accumulation centric design is very similar to the way ethereum did work at launch: a single state shared by all peers.
 
-Here we will move as much as possible of this accumulation process into refinement. To allow this refinement will run over a partial state that we pass into its workitem, we call this partial state the witness in this tutorial as it is the witness of a given state transition, is also often refered as a state proof (eg in polkadot).
+Now we will move as much as possible out of this accumulation process, to run things mostly in refinement. Remember, refinement is generally cheap, accumulation is expensive.
+Same for data, data stored in jamt storage is expensive, data stored in data lake is less expensive.
 
-The users still need to access the whole state (all tokens and balance), here jam only see some partial state to validate some state transition, so the users or client will need to store this data. This is similar to a parachain or a sidechain.
+To achieve this, refinement will run over a partial state included in the workitem. In this tutorial, we call this partial state the witness as it is the witness of a given state transition. It is also often refered as a state proof (eg in polkadot).
 
-To sumup, we got clients that store and share a common state, and send proofs of state transition to jam. Jam refinement will validate those proofs, and jam accumulation will only store and update this common state merkle root.
+Therefore, jamt will only ever see partial states needed for state transitions, and the full state used by clients of the service is managed (and stored) externally at service client application level. This is similar to what is done by a polkadot parachain, yet this tutorial will use a simple custom state to stress that jam do not expect specifics data or state transitions.
+
+To sumup, we will have clients that store and share a common state, then send proofs of state transition to jam. Jam refinement will validate those proofs, and jam accumulation will only store and update this common state merkle root.
 
 ## Overview
 
-This tutorial extends part 2 with a focus on:
-- designing rollup/sidechain like state: accounts are not stored anymore on jam state.
+This tutorial extends previous tutorial (a token ledger storing data during accumulation) with a focus on:
+- designing a client external state: accounts are not stored on jam state, only the state merkle root.
 - discuss cost of such design.
-- use a minimal external client state implementation only for educational purpose.
+- have  a minimal external client state code example for educational purpose.
 
 This tutorial will not attempt to:
-- be secure, we keep skipping signature checks.
+- be secure, we keep skipping signature checks in refinement.
 - be optimal, we use a very simple bounded, unoptimal, merkle state and proofs. For real use a proper third party implementation of state and state storage should be use (eg polkadot sdk).
-- implement state distribution: each client should synch upon the last state root finalized in jam state. A disconnected client will lose ability to synch state if work items got pruned (TODO refer to gp data lake retention duration). Here we will not implement such client but just launch client commands from a single state persistence.
+- implement state distribution: each client should synch upon the last state root finalized in jam state. A disconnected client will lose ability to synch state if work items and work reports got pruned (GP 14.3.1 defines two retention periods, short live until finality for auditing and a long live for 28 days (672 slots) the datalake). Here we will not implement such client but simply launch all clients from a disk directory over a single state persistence, totally cheating on state distribution. Generally availability for client can be largely application centric. Work reports in blocks can also be largely used (but in practice only block changing jamt storage for the service are of interest).
 - define proper role for distribution: every client are just validators with direct access the jam datalake and work items, on a real implementation, distribution strategy must fit the usecase.
-- external client must handle fail or success accumulate processing, here we assume it will always succeed, a failure will put client in an invalid state. TODO should we backup old persistence files to rollback (sounds simple enough).
+- external client must handle fail or success accumulate processing, here when running test, we assume it will always succeed. A failure will put client in an invalid state. TODO should we backup old persistence files to rollback (sounds simple enough).
 
-We thus remain at service level.
+So the tutorial still stay mostly at service level.
 
 ## Single workitem state transition
 
-This design simply put a batch of operations in a single work item, processed in a single refinement call, such that refinement can directly pass the new and olt state root to accumulation which only update this root if old root matches.
+This design simply put a batch of operations in a single work item. Processing of the batch is done in a single refinement call. Then refinement can directly transmit both new and old state root to accumulation which only update this root (if old root matches).
 
 JAM persistence is therefore only:
 - a key value for the current state root
 - work item in the datalake.
 
-
-
 ### Testing
 
 This tutorial can run the same examples as the token ledger one. One will observe that the logs are slightly different:
-- transfer are noted in refine
-- transfer in refine are asociated with a workpackage hash and workitem (we could have a single extrinsic root)_
-- accumulate advance state root
+- transfer are logged in refine.
+- transfer in refine are asociated with a workpackage hash and workitem (we could have a single extrinsic root).
+- accumulate advance state root.
 - accumulate display workitem processed or failure (can fail if two workpackage try to advance same external client state: only one get processed, failure need to be handled properly though).
 
-### Prepare a payload for refinement
+### Prepare a workitem payload for refinement
 
-```cargo run --features=std -- ./example_payloads/op_mint.json refinement_payload```
+```
+cargo run --features=std -- ./example_payloads/op_mint.json refinement_payload
+```
 
 This run locally the external client operations, and write a payload for refinement containing both input operations and the state witness to be able to run.
+t
+
 The json file shall contain all operation to run for a single slot. `op_mint.json` for instance will involves:  three balance value included of each minted token, and the tokens (as documented in code sample the state is simply includding all tokens everytime).
 
-### Example code
+Codewise, client read full state from local disk persistence, then run operation from json, then extract witness from recorded state access, then binary encode both witness and operation into an external file, finally update persistence so next call will run on an updated state.
 
-can be found in token-ledger-external-state :
-- external_client module is the dummy client external state implementation. Description of this state is out of the scope of this tutorial, but code has been written with the intention of being simple and easy to read (serializing deserializing all at once from file, simple binary tree for balances, single out of tree value to store all tokens ids).
-- main.rs: produce payload for refinement:  just open external client state from last serializing, process state transition from operations in input json and a jam encoding binary payload in a file 
-- lib.rs: the actual service, split into accumalution and refinement modules.
+TODO split witness operation and update persistence one (update persistence over payload rather than json so it is clear what is being done)??
 
 ### Run on jam
 
-Simply use jst as in previous tutorial (use the submit-file command for work item with the produced payload refinement_payload).
+Simply use jst as in previous tutorial (only use the submit-file command for work item with the previous step produced payload `refinement_payload` file).
+
+### Example code
+
+can be found in this git repository under `token-ledger-external-state` crate:
+- external_client module is the dummy client external state implementation. Description of this state is out of the scope of this tutorial, but code has been written to be simple and easy to read (serializing deserializing all at once from file, simple binary tree for balances, single out of tree value to store all tokens ids).
+- main.rs: produce payload for refinement:  just open external client state from last serializing, process state transition from operations in input json and a jam encoding binary payload in a file 
+- lib.rs: the actual service, split into accumalution and refinement modules.
+
+
+----------------------------------
+
+
+BELLOW is draft
+
 
 TODO document what happens with jamt item command (workpackage produce, data in lake...).
 
@@ -107,3 +123,9 @@ Client when creating operations, will process witness (state proof) over a resol
     - merge state with both package ids -> then refine merge step (do not accept futher refine in merge state after x time). TODO plus client side a merge state should suspend until not merge and rebase tx on merged state root.
 
 ## TODO add authorizer to system
+
+
+## Next step
+
+core vm , with data save as persisting memory
+
