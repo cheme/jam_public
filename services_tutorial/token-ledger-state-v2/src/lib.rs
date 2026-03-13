@@ -13,7 +13,7 @@ pub mod merkle;
 
 mod transition;
 
-pub use transition::{Operations, state_transition, StateOps};
+pub use transition::{Operations, state_transition, StateOps, Version};
 
 pub type TreeIndex = u16;
 

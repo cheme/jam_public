@@ -38,12 +38,14 @@ pub fn refine_payload(mut payload: &[u8]) -> (Vec<u8>, usize) {
     info!("loaded state from witness");
     let previous_root = partial_state.get_root();
     info!("from root: {:?}", previous_root);
-    token_ledger_state_v2::state_transition(&mut partial_state, &operations);
+    let version = token_ledger_state_v2::Version::NoParallel;
+    token_ledger_state_v2::state_transition(&mut partial_state, &operations, version);
     let new_root = partial_state.get_root();
     info!("to root: {:?}", new_root);
 
     (
         crate::accumulation::Operation {
+            version,
             previous_root,
             new_root,
         }
