@@ -31,12 +31,14 @@ fn main() {
     let db_path = std::path::PathBuf::new();
     let mut state = token_ledger_builder_v2::state::State::from_db_path(db_path);
     dbg!(state.get_root());
-    token_ledger_state_v2::state_transition(&mut state, &operations, token_ledger_state_v2::Version::NoParallel);
+    let version = token_ledger_state_v2::Version::NoParallel;
+    token_ledger_state_v2::state_transition(&mut state, &operations, version);
     dbg!(state.get_root());
     let witness = state.take_witness();
     dbg!(&witness);
 
     let refine_payload = token_ledger_service_v2::RefinePayload {
+        version,
         operations,
         witness,
     };
