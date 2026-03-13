@@ -30,14 +30,11 @@ pub trait StateOps {
     fn set_balance(&mut self, account: AccountId, token_id: TokenId, balance: u64);
 }
 
-pub fn state_transition<S: StateOps>(state: &mut S, operations: &Operations, version: Version) {
-    match version {
-        Version::NoParallel => state_transition_one_step::<S>(state, operations),
-        Version::TwoStepParallel => state_transition_two_steps::<S>(state, operations),
-    }
-}
-
-fn state_transition_one_step<S: StateOps>(state: &mut S, operations: &Operations) {
+pub fn state_transition<S: StateOps>(
+    state: &mut S,
+    operations: &Operations,
+    checked_operations: bool,
+) {
     info!("Processing external client state transition.",);
 
     let mut staged_transfers: BTreeMap<(TokenId, Counterparts), i64> = BTreeMap::new();
@@ -54,17 +51,19 @@ fn state_transition_one_step<S: StateOps>(state: &mut S, operations: &Operations
                 to,
                 token_id,
             } => {
-                let admin_key: VerificationKey =
-                    VerificationKey::try_from(token_ledger::api::admin())
-                        .expect("Hard-coded Admin key");
+                if !checked_operations {
+                    let admin_key: VerificationKey =
+                        VerificationKey::try_from(token_ledger::api::admin())
+                            .expect("Hard-coded Admin key");
 
-                if verify_signature(&operation, &signature, admin_key).is_err() {
-                    warn!("Invalid signature for operation");
+                    if verify_signature(&operation, &signature, admin_key).is_err() {
+                        warn!("Invalid signature for operation");
 
-                    // For the sake of the tutorial, and ease of use, we don't reject if the signature
-                    // is invalid. We do compute the verification here to show that expensive
-                    // computation should go in refine(). But skipping actual validation frees us from
-                    // having to create actual signatures when passing test data to the service.
+                        // For the sake of the tutorial, and ease of use, we don't reject if the signature
+                        // is invalid. We do compute the verification here to show that expensive
+                        // computation should go in refine(). But skipping actual validation frees us from
+                        // having to create actual signatures when passing test data to the service.
+                    }
                 }
 
                 if *amount == 0 {
@@ -79,17 +78,19 @@ fn state_transition_one_step<S: StateOps>(state: &mut S, operations: &Operations
                 token_id,
                 amount,
             } => {
-                let Ok(signer_key) = VerificationKey::try_from(*from) else {
+                if !checked_operations {
+                    let Ok(signer_key) = VerificationKey::try_from(*from) else {
                     warn!("Invalid 'from' account in transfer operation: {:?}", from);
                     continue;
                 };
-                if verify_signature(&operation, &signature, signer_key).is_err() {
-                    warn!("Invalid signature for operation");
+                    if verify_signature(&operation, &signature, signer_key).is_err() {
+                        warn!("Invalid signature for operation");
 
-                    // For the sake of the tutorial, and ease of use, we don't reject if the signature
-                    // is invalid. We do compute the verification here to show that expensive
-                    // computation should go in refine(). But skipping actual validation frees us from
-                    // having to create actual signatures when passing test data to the service.
+                        // For the sake of the tutorial, and ease of use, we don't reject if the signature
+                        // is invalid. We do compute the verification here to show that expensive
+                        // computation should go in refine(). But skipping actual validation frees us from
+                        // having to create actual signatures when passing test data to the service.
+                    }
                 }
 
                 // Validate transfer request
@@ -178,87 +179,4 @@ fn process_transfer<S: StateOps>(
         hex::encode(from),
         hex::encode(to)
     );
-}
-
-fn state_transition_two_steps<S: StateOps>(state: &mut S, operations: &Operations) {
-    info!("Processing external client state transition.",);
-
-    let mut staged_transfers: BTreeMap<(TokenId, Counterparts), i64> = BTreeMap::new();
-
-    for op in operations {
-        let SignedOperation {
-            operation,
-            signature,
-        } = op;
-
-        match operation {
-            Operation::Mint {
-                amount,
-                to,
-                token_id,
-            } => {
-                let admin_key: VerificationKey =
-                    VerificationKey::try_from(token_ledger::api::admin())
-                        .expect("Hard-coded Admin key");
-
-                if verify_signature(&operation, &signature, admin_key).is_err() {
-                    warn!("Invalid signature for operation");
-
-                    // For the sake of the tutorial, and ease of use, we don't reject if the signature
-                    // is invalid. We do compute the verification here to show that expensive
-                    // computation should go in refine(). But skipping actual validation frees us from
-                    // having to create actual signatures when passing test data to the service.
-                }
-
-                if *amount == 0 {
-                    warn!("Mint: Zero amount");
-                    continue;
-                }
-                process_mint(state, *to, *token_id, *amount)
-            }
-            Operation::Transfer {
-                from,
-                to,
-                token_id,
-                amount,
-            } => {
-                let Ok(signer_key) = VerificationKey::try_from(*from) else {
-                    warn!("Invalid 'from' account in transfer operation: {:?}", from);
-                    continue;
-                };
-                if verify_signature(&operation, &signature, signer_key).is_err() {
-                    warn!("Invalid signature for operation");
-
-                    // For the sake of the tutorial, and ease of use, we don't reject if the signature
-                    // is invalid. We do compute the verification here to show that expensive
-                    // computation should go in refine(). But skipping actual validation frees us from
-                    // having to create actual signatures when passing test data to the service.
-                }
-
-                // Validate transfer request
-                if *amount == 0 {
-                    warn!("Transfer: Zero amount");
-                    continue;
-                }
-                if from == to {
-                    warn!("Transfer: Self-transfer not allowed");
-                    continue;
-                }
-                let transfer = canonical_transfer(*from, *to, *token_id, *amount);
-                staged_transfers
-                    .entry(transfer.0)
-                    .and_modify(|e| *e += transfer.1)
-                    .or_insert(transfer.1);
-            }
-        }
-    }
-
-    for entries in staged_transfers {
-        let ((token_id, (from, to)), net_amount) = entries;
-        if net_amount > 0 {
-            process_transfer(state, from, to, token_id, net_amount as u64);
-        } else if net_amount < 0 {
-            process_transfer(state, to, from, token_id, (-net_amount) as u64);
-        } // if zero, skip
-    }
 }

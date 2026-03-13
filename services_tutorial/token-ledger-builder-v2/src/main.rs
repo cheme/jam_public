@@ -32,7 +32,7 @@ fn main() {
     let mut state = token_ledger_builder_v2::state::State::from_db_path(db_path);
     dbg!(state.get_root());
     let version = token_ledger_state_v2::Version::NoParallel;
-    token_ledger_state_v2::state_transition(&mut state, &operations, version);
+    token_ledger_state_v2::state_transition(&mut state, &operations, false);
     dbg!(state.get_root());
     let witness = state.take_witness();
     dbg!(&witness);
