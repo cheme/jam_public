@@ -5,7 +5,7 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 
 use codec::{Decode, Encode};
-use std::io::{Seek, Write};
+use std::io::{Read, Seek, Write};
 use token_ledger::api::{AccountId, TokenId};
 use token_ledger_state_v2::merkle::{
     Balance, MerkleTree, Value, ValueTraits, Witness, TREE_HASHES,
@@ -18,22 +18,43 @@ use token_ledger_state_v2::{
 pub struct State {
     balances: StateTree<Balance>,
     known_tokens: KnownTokens,
-    persist: Option<std::fs::File>,
+    persist: Option<std::path::PathBuf>,
 }
 
 impl State {
-    pub fn from_file(mut db_file: std::fs::File) -> Self {
-        //let mut reader = std::io::BufReader::new(&mut db_file);
-        let mut reader = codec::IoReader(&mut db_file);
-        State {
-            balances: StateTree::<Balance>::from_stream(&mut reader),
-            known_tokens: KnownTokens::from_stream(&mut reader),
-            persist: Some(db_file),
+    pub fn from_db_path(db_location: std::path::PathBuf) -> Self {
+        let mut head_path = db_location.clone();
+        head_path.push("HEAD");
+
+        let head_hash = if let Ok(mut db_file) = std::fs::File::open(head_path) {
+            let mut hash_str = String::new();
+            db_file.read_to_string(&mut hash_str).unwrap();
+            let hash_vec = hex::decode(hash_str).unwrap();
+            let mut hash = EMPTY_HASH;
+            hash.copy_from_slice(&hash_vec);
+            hash
+        } else {
+            EMPTY_HASH
+        };
+        if head_hash != EMPTY_HASH {
+            let mut state_path = db_location.clone();
+            state_path.push(&hex::encode(&head_hash));
+            let mut db_file = std::fs::File::open(state_path).unwrap();
+            let mut reader = codec::IoReader(&mut db_file);
+            State {
+                balances: StateTree::<Balance>::from_stream(&mut reader),
+                known_tokens: KnownTokens::from_stream(&mut reader),
+                persist: Some(db_location),
+            }
+        } else {
+            let mut state = State::default();
+            state.set_new_persist_file(db_location);
+            state
         }
     }
 
-    pub fn set_new_persist_file(&mut self, db_file: std::fs::File) {
-        self.persist = Some(db_file);
+    pub fn set_new_persist_file(&mut self, db_location: std::path::PathBuf) {
+        self.persist = Some(db_location);
     }
 
     pub fn take_witness(&mut self) -> Witness {
@@ -69,19 +90,51 @@ impl State {
             &self.known_tokens.merkle.merkle_value(),
         );
     }
+
+    pub fn serialize(&mut self) {
+        let Some(db_location) = self.persist.clone() else {
+            return;
+        };
+        let hash = self.get_root().clone();
+        let mut state_path = db_location.clone();
+        state_path.push(&hex::encode(&hash));
+        if let Ok(_) = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&state_path)
+        {
+            // ignore already a state with tihs content
+        } else {
+            let mut file = std::fs::File::create_new(&state_path).unwrap();
+            file.seek(std::io::SeekFrom::Start(0)).unwrap();
+            self.balances.serialize(&mut file);
+            self.known_tokens.serialize(&mut file);
+            file.flush().unwrap();
+        }
+        // update head
+        let mut head_path = db_location.clone();
+        head_path.push("HEAD");
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&head_path)
+        {
+            file.write_all(hex::encode(&hash).as_bytes()).unwrap();
+            file.flush().unwrap();
+        } else {
+            let mut file = std::fs::File::create_new(&head_path).unwrap();
+            file.write_all(hex::encode(&hash).as_bytes()).unwrap();
+            file.flush().unwrap();
+        }
+    }
 }
 
 impl Drop for State {
     fn drop(&mut self) {
-        let Some(file) = self.persist.as_mut() else {
-            return;
-        };
-        file.seek(std::io::SeekFrom::Start(0)).unwrap();
-        self.balances.serialize(file);
-        self.known_tokens.serialize(file);
-        file.flush().unwrap();
+        self.serialize();
     }
 }
+
 impl StateOps for State {
     fn get_balance(&self, account: AccountId, token_id: TokenId) -> Option<u64> {
         let to_key = token_ledger::api::balance_key(token_id, &account);
@@ -371,19 +424,12 @@ mod tests {
 
         // test serialize
         let dir = tempfile::tempdir().unwrap();
-        let mut db_file_path = dir.path().to_path_buf();
-        db_file_path.push("data");
-        let db_file = std::fs::File::create_new(&db_file_path).unwrap();
-        state.set_new_persist_file(db_file);
+        let dir_path = dir.keep();
+        state.set_new_persist_file(dir_path.clone());
         let root_bef_ser = state.get_root();
         core::mem::drop(state);
 
-        let db_file = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(&db_file_path)
-            .unwrap();
-        let state_from_ser = State::from_file(db_file);
+        let state_from_ser = State::from_db_path(dir_path);
 
         assert_eq!(root_bef_ser, state_from_ser.get_root());
     }
