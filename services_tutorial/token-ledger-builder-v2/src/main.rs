@@ -28,14 +28,12 @@ fn main() {
     let mut output = std::fs::File::create(&args[2]).unwrap();
     let mut opt_db = std::fs::OpenOptions::new();
     opt_db.read(true).write(true);
-    let mut state = if let Ok(balances) = opt_db.open("balances.db") {
-        let tokens = opt_db.open("tokens.db").unwrap();
-        token_ledger_builder_v2::state::State::from_files(balances, tokens)
+    let mut state = if let Ok(db_file) = opt_db.open("data.db") {
+        token_ledger_builder_v2::state::State::from_file(db_file)
     } else {
-        let balances_file = std::fs::File::create_new("balances.db").unwrap();
-        let tokens_file = std::fs::File::create_new("tokens.db").unwrap();
+        let db_file = std::fs::File::create_new("data.db").unwrap();
         let mut state = token_ledger_builder_v2::state::State::default();
-        state.set_new_persist_files(balances_file, tokens_file);
+        state.set_new_persist_file(db_file);
         state
     };
     dbg!(state.get_root());

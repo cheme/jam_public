@@ -18,21 +18,22 @@ use token_ledger_state_v2::{
 pub struct State {
     balances: StateTree<Balance>,
     known_tokens: KnownTokens,
+    persist: Option<std::fs::File>,
 }
 
 impl State {
-    pub fn from_files(balances: std::fs::File, tokens: std::fs::File) -> Self {
-        let mut result = State {
-            balances: StateTree::<Balance>::from_file(balances),
-            known_tokens: KnownTokens::from_file(tokens),
-        };
-        let _ = result.take_witness();
-        result
+    pub fn from_file(mut db_file: std::fs::File) -> Self {
+        //let mut reader = std::io::BufReader::new(&mut db_file);
+        let mut reader = codec::IoReader(&mut db_file);
+        State {
+            balances: StateTree::<Balance>::from_stream(&mut reader),
+            known_tokens: KnownTokens::from_stream(&mut reader),
+            persist: Some(db_file),
+        }
     }
 
-    pub fn set_new_persist_files(&mut self, balances: std::fs::File, tokens: std::fs::File) {
-        self.balances.persist = Some(balances);
-        self.known_tokens.persist = Some(tokens);
+    pub fn set_new_persist_file(&mut self, db_file: std::fs::File) {
+        self.persist = Some(db_file);
     }
 
     pub fn take_witness(&mut self) -> Witness {
@@ -70,6 +71,17 @@ impl State {
     }
 }
 
+impl Drop for State {
+    fn drop(&mut self) {
+        let Some(file) = self.persist.as_mut() else {
+            return;
+        };
+        file.seek(std::io::SeekFrom::Start(0)).unwrap();
+        self.balances.serialize(file);
+        self.known_tokens.serialize(file);
+        file.flush().unwrap();
+    }
+}
 impl StateOps for State {
     fn get_balance(&self, account: AccountId, token_id: TokenId) -> Option<u64> {
         let to_key = token_ledger::api::balance_key(token_id, &account);
@@ -158,14 +170,7 @@ struct StateTree<V: ValueTraits> {
     indexes: BTreeMap<Vec<u8>, TreeIndex>,
     values: BTreeMap<TreeIndex, Value<V>>,
     tree: Tree,
-    persist: Option<std::fs::File>,
     witness_values: RefCell<BTreeMap<Vec<u8>, V>>,
-}
-
-impl<V: ValueTraits> Drop for StateTree<V> {
-    fn drop(&mut self) {
-        self.serialize();
-    }
 }
 
 impl<V: ValueTraits> Default for StateTree<V> {
@@ -174,38 +179,30 @@ impl<V: ValueTraits> Default for StateTree<V> {
             indexes: Default::default(),
             values: Default::default(),
             tree: Default::default(),
-            persist: None,
             witness_values: Default::default(),
         }
     }
 }
 
 impl<V: ValueTraits> StateTree<V> {
-    fn from_file(mut file: std::fs::File) -> Self {
+    fn from_stream<R: codec::Input>(buf_reader: &mut R) -> Self {
         let mut result = Self::default();
-        let mut buf_reader = codec::IoReader(std::io::BufReader::new(&mut file));
-        let nb_item = u64::decode(&mut buf_reader).unwrap();
+        let nb_item = u64::decode(buf_reader).unwrap();
         dbg!("loading {} items", nb_item);
 
         for _ in 0..nb_item {
-            let v = Value::<V>::decode(&mut buf_reader).unwrap();
+            let v = Value::<V>::decode(buf_reader).unwrap();
             result.set(v.key, v.value);
         }
-        result.persist = Some(file);
-
+        result.tree.initial_hashes = result.tree.merkle.hashes.clone();
         result
     }
-    fn serialize(&mut self) {
-        let Some(file) = self.persist.as_mut() else {
-            return;
-        };
-        file.seek(std::io::SeekFrom::Start(0)).unwrap();
+    fn serialize<W: Write>(&mut self, w: &mut W) {
         dbg!("serializing {} items", self.values.len());
-        (self.values.len() as u64).encode_to(file);
+        (self.values.len() as u64).encode_to(w);
         for (_, v) in self.values.iter() {
-            v.encode_to(file);
+            v.encode_to(w);
         }
-        file.flush().unwrap();
     }
 
     fn get_value(&self, k: &[u8]) -> Option<&Value<V>> {
@@ -284,7 +281,6 @@ impl<V: ValueTraits> StateTree<V> {
                 witness: Default::default(),
                 merkle: tree,
             },
-            persist: None,
             witness_values: Default::default(),
         })
     }
@@ -303,38 +299,25 @@ impl<V: ValueTraits> StateTree<V> {
 #[derive(Default)]
 pub struct KnownTokens {
     merkle: token_ledger_state_v2::merkle::KnownTokens,
-    persist: Option<std::fs::File>,
     witness: Vec<TokenId>,
 }
 
 impl KnownTokens {
-    fn from_file(mut file: std::fs::File) -> Self {
+    fn from_stream<R: codec::Input>(buf_reader: &mut R) -> Self {
         let mut result = Self::default();
-        let mut buf_reader = codec::IoReader(std::io::BufReader::new(&mut file));
-        result.merkle.token_ids = Decode::decode(&mut buf_reader).unwrap();
-        result.persist = Some(file);
+        result.merkle.token_ids = Decode::decode(buf_reader).unwrap();
+        result.witness = result.merkle.token_ids.clone();
         result
     }
 
-    fn serialize(&mut self) {
-        let Some(file) = self.persist.as_mut() else {
-            return;
-        };
-        file.seek(std::io::SeekFrom::Start(0)).unwrap();
+    fn serialize<W: Write>(&mut self, w: &mut W) {
         let encoded = self.merkle.token_ids.encode();
         dbg!("serializing {} token bytes", encoded.len());
-        file.write_all(encoded.as_slice()).unwrap();
-        file.flush().unwrap();
+        w.write_all(encoded.as_slice()).unwrap();
     }
 
     fn take_witness(&mut self) -> Vec<TokenId> {
         std::mem::replace(&mut self.witness, self.merkle.token_ids.clone())
-    }
-}
-
-impl Drop for KnownTokens {
-    fn drop(&mut self) {
-        self.serialize();
     }
 }
 
@@ -388,27 +371,19 @@ mod tests {
 
         // test serialize
         let dir = tempfile::tempdir().unwrap();
-        let mut balances_file_path = dir.path().to_path_buf();
-        balances_file_path.push("balances");
-        let mut tokens_file_path = dir.path().to_path_buf();
-        tokens_file_path.push("tokens");
-        let balances_file = std::fs::File::create_new(&balances_file_path).unwrap();
-        let tokens_file = std::fs::File::create_new(&tokens_file_path).unwrap();
-        state.set_new_persist_files(balances_file, tokens_file);
+        let mut db_file_path = dir.path().to_path_buf();
+        db_file_path.push("data");
+        let db_file = std::fs::File::create_new(&db_file_path).unwrap();
+        state.set_new_persist_file(db_file);
         let root_bef_ser = state.get_root();
         core::mem::drop(state);
 
-        let balances_file = std::fs::OpenOptions::new()
+        let db_file = std::fs::OpenOptions::new()
             .read(true)
             .write(true)
-            .open(&balances_file_path)
+            .open(&db_file_path)
             .unwrap();
-        let tokens_file = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(&tokens_file_path)
-            .unwrap();
-        let state_from_ser = State::from_files(balances_file, tokens_file);
+        let state_from_ser = State::from_file(db_file);
 
         assert_eq!(root_bef_ser, state_from_ser.get_root());
     }
