@@ -2,19 +2,24 @@
 //! Functions could be part of state, but we keep it separate
 //! to isolate, what is chain logic.
 
-use crate::external_client::state::State;
 use alloc::collections::BTreeMap;
-#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use jam_pvm_common::{info, warn};
 use token_ledger::api::{
-    AccountId, Counterparts, Operation, SignedOperation, TokenId, VerificationKey,
-    canonical_transfer, verify_signature,
+    canonical_transfer, verify_signature, AccountId, Counterparts, Operation, SignedOperation,
+    TokenId, VerificationKey,
 };
 
 pub type Operations = Vec<SignedOperation>;
 
-pub fn state_transition(state: &mut State, operations: &Operations) {
+pub trait StateOps {
+    fn known_tokens_contains(&self, token_id: TokenId) -> bool;
+    fn known_tokens_push(&mut self, token_id: TokenId);
+    fn get_balance(&self, account: AccountId, token_id: TokenId) -> Option<u64>;
+    fn set_balance(&mut self, account: AccountId, token_id: TokenId, balance: u64);
+}
+
+pub fn state_transition<S: StateOps>(state: &mut S, operations: &Operations) {
     info!("Processing external client state transition.",);
 
     let mut staged_transfers: BTreeMap<(TokenId, Counterparts), i64> = BTreeMap::new();
@@ -97,7 +102,7 @@ pub fn state_transition(state: &mut State, operations: &Operations) {
     }
 }
 
-fn process_mint(state: &mut State, to: AccountId, token_id: TokenId, amount: u64) {
+fn process_mint<S: StateOps>(state: &mut S, to: AccountId, token_id: TokenId, amount: u64) {
     if state.known_tokens_contains(token_id) {
         warn!("Minting already minted token: {}", token_id);
         return;
@@ -119,8 +124,8 @@ fn process_mint(state: &mut State, to: AccountId, token_id: TokenId, amount: u64
     );
 }
 
-fn process_transfer(
-    state: &mut State,
+fn process_transfer<S: StateOps>(
+    state: &mut S,
     from: AccountId,
     to: AccountId,
     token_id: TokenId,

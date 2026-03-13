@@ -1,15 +1,19 @@
-//! External client can be seen as a sidechain or parachain
-//! to some extent, but really is just building data over
-//! data lake and running state transition in refinement.
+//! State logic for state transition.
+//! Will be use during refinement or by client (builder and chain sync),
+//! this is the core of the service.
+
+#![no_std]
+
+extern crate alloc;
 
 pub use blake2b_simd as blake2b;
 pub use jam_types::Hash;
 
-pub mod state;
+pub mod merkle;
 
 mod transition;
 
-pub use transition::{Operations, state_transition};
+pub use transition::{Operations, state_transition, StateOps};
 
 pub type TreeIndex = u16;
 
@@ -18,7 +22,7 @@ pub type TreeIndex = u16;
 pub const EMPTY_HASH: Hash = [0u8; 32];
 
 // only 15 to be able to index hashes with u16
-const TREE_DEPTH: usize = 15;
+pub const TREE_DEPTH: usize = 15;
 
 pub fn hash_multiple(m: &[&[u8]]) -> Hash {
     if m.is_empty() || m.iter().map(AsRef::as_ref).all(<[u8]>::is_empty) {
@@ -48,7 +52,7 @@ pub fn tree_index_from_key(k: &[u8]) -> TreeIndex {
 }
 
 /// Hash to include in merkle structure for a given value.
-trait MerkleValue {
+pub trait MerkleValue {
     fn merkle_value(&self) -> Hash;
 }
 

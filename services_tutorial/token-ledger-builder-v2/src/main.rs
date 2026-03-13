@@ -30,21 +30,21 @@ fn main() {
     opt_db.read(true).write(true);
     let mut state = if let Ok(balances) = opt_db.open("balances.db") {
         let tokens = opt_db.open("tokens.db").unwrap();
-        token_ledger_external_state::external_client::state::State::from_files(balances, tokens)
+        token_ledger_builder_v2::state::State::from_files(balances, tokens)
     } else {
         let balances_file = std::fs::File::create_new("balances.db").unwrap();
         let tokens_file = std::fs::File::create_new("tokens.db").unwrap();
-        let mut state = token_ledger_external_state::external_client::state::State::default();
+        let mut state = token_ledger_builder_v2::state::State::default();
         state.set_new_persist_files(balances_file, tokens_file);
         state
     };
     dbg!(state.get_root());
-    token_ledger_external_state::external_client::state_transition(&mut state, &operations);
+    token_ledger_state_v2::state_transition(&mut state, &operations);
     dbg!(state.get_root());
     let witness = state.take_witness();
     dbg!(&witness);
 
-    let refine_payload = token_ledger_external_state::RefinePayload {
+    let refine_payload = token_ledger_service_v2::RefinePayload {
         operations,
         witness,
     };

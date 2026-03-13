@@ -1,121 +1,18 @@
-//! External client state, build over a simple fix size binary tree and linked data.
-//! For the sake of keeping this example concise, client implementation only manage
-//! two use cases (in realy world for efficiency there is many processing that can be
-//! skip for others use cases):
-//! - client (with unsafe persistence (breaks on any crash), and always registering witnesses).
-//! - pvm, no std, riscv targetting and running on partial state build from witness.
-//!
-//! Client implementation is obtain by including "std" feature, while pvm is obtain by
-//! building no std.
+//! client state is simply using the shared state code, and
+//! adding to it a simple persistence system  (unsafe, breaks on any crash), and always register witnesses.
 
-use super::{
-    EMPTY_HASH, Hash, MerkleValue, TREE_DEPTH, TreeIndex, hash_multiple, hash_pair, hash_sequence,
-    tree_index_from_key,
-};
+use std::cell::RefCell;
+use std::collections::BTreeMap;
 
-use alloc::collections::BTreeMap;
-#[cfg(not(feature = "std"))]
-use alloc::vec::Vec;
 use codec::{Decode, Encode};
-use token_ledger::api::{AccountId, TokenId};
-
-#[cfg(feature = "std")]
-use core::cell::RefCell;
-
-#[cfg(feature = "std")]
 use std::io::{Seek, Write};
-
-// very small state size, expect hash collisions (jut fail on hash collision: we store key so we
-// can see if hash collision)_
-const TREE_SIZE: usize = 1 << TREE_DEPTH;
-const TREE_HASHES: usize = (TREE_SIZE * 2) - 1;
-
-// We use some small bounded simple binary tree (2^15 itemrs) for the sake of having the simpliest implementation.
-// We also avoid optimization to have same kind of footprint between empty state and full state,
-// and a cost model relatively easy to reason with.
-// Merkle hash 0 is used for empty state so we can use hash default implementation for it.
-// A key access involve a witness of 15 hash and the actual key and value.
-// Missing value in witness will false positive return an empty hash leading to root mismatch, not
-// the best for debugging purpose.
-#[derive(Default)]
-pub struct MerkleTree {
-    hashes: BTreeMap<TreeIndex, Hash>,
-    #[cfg(feature = "std")]
-    hashes_for_witness: BTreeMap<TreeIndex, Hash>,
-    // we use a refcell as client implementation is only for testing
-    // and run on a single thread, this way we keep sane prototyping
-    // for non client code.
-    #[cfg(feature = "std")]
-    witness: RefCell<BTreeMap<TreeIndex, Hash>>,
-}
-
-impl MerkleTree {
-    // Note this must always be call to access any `hashes field content`,
-    // so we register witness properly.
-    fn get_hash(&self, ix: TreeIndex) -> &Hash {
-        if let Some(hash) = self.hashes.get(&ix) {
-            #[cfg(feature = "std")]
-            {
-                let hash = self.hashes_for_witness.get(&ix).unwrap_or(&EMPTY_HASH);
-                if hash != &EMPTY_HASH {
-                    self.witness.borrow_mut().insert(ix, *hash);
-                    self.witness.borrow_mut().insert(ix, *hash);
-                }
-            }
-            return hash;
-        } else {
-            return &EMPTY_HASH;
-        }
-    }
-
-    pub fn root(&self) -> &Hash {
-        return self.get_hash((TREE_HASHES - 1) as TreeIndex);
-    }
-
-    // expect value
-    pub fn witness_access(&self, ix: TreeIndex) {
-        let mut at = ix;
-        let mut offset: TreeIndex = 0;
-        for depth in 0..TREE_DEPTH {
-            if at % 2 == 0 {
-                self.get_hash(offset + at + 1);
-            } else {
-                self.get_hash(offset + at - 1);
-            }
-            offset += 1 << (TREE_DEPTH - depth);
-            at = at / 2;
-        }
-    }
-
-    pub fn insert(&mut self, ix: TreeIndex, value_hash: Hash) {
-        let mut hash = value_hash;
-        let mut at = ix;
-        let mut offset: TreeIndex = 0;
-        for depth in 0..TREE_DEPTH {
-            self.hashes.insert(offset + at, hash);
-            if at % 2 == 0 {
-                hash = hash_pair(&hash, self.get_hash(offset + at + 1));
-            } else {
-                hash = hash_pair(self.get_hash(offset + at - 1), &hash);
-            }
-            offset += 1 << (TREE_DEPTH - depth);
-            at = at / 2;
-        }
-
-        self.hashes.insert(offset + at, hash);
-    }
-
-    #[cfg(feature = "std")]
-    fn take_witness(&mut self) -> BTreeMap<TreeIndex, Hash> {
-        let hashes = std::mem::replace(
-            self.witness.get_mut(),
-            BTreeMap::<TreeIndex, Hash>::default(),
-        );
-        // update for next run
-        self.hashes_for_witness = self.hashes.clone();
-        hashes
-    }
-}
+use token_ledger::api::{AccountId, TokenId};
+use token_ledger_state_v2::merkle::{
+    Balance, MerkleTree, Value, ValueTraits, Witness, TREE_HASHES,
+};
+use token_ledger_state_v2::{
+    hash_pair, tree_index_from_key, Hash, MerkleValue, StateOps, TreeIndex, EMPTY_HASH, TREE_DEPTH,
+};
 
 #[derive(Default)]
 pub struct State {
@@ -123,17 +20,7 @@ pub struct State {
     known_tokens: KnownTokens,
 }
 
-#[derive(Default, Encode, Decode, Debug)]
-pub struct Witness {
-    // root is part of the hashes
-    hashes: Vec<(TreeIndex, Hash)>,
-    key_value_balances: Vec<(Vec<u8>, Balance)>,
-    // Currently no operation make sense without accessing it so always store.
-    token_ids: Vec<TokenId>,
-}
-
 impl State {
-    #[cfg(feature = "std")]
     pub fn from_files(balances: std::fs::File, tokens: std::fs::File) -> Self {
         let mut result = State {
             balances: StateTree::<Balance>::from_file(balances),
@@ -143,13 +30,11 @@ impl State {
         result
     }
 
-    #[cfg(feature = "std")]
     pub fn set_new_persist_files(&mut self, balances: std::fs::File, tokens: std::fs::File) {
         self.balances.persist = Some(balances);
         self.known_tokens.persist = Some(tokens);
     }
 
-    #[cfg(feature = "std")]
     pub fn take_witness(&mut self) -> Witness {
         let (hashes, values) = self.balances.take_witness();
         return Witness {
@@ -169,59 +54,116 @@ impl State {
             return None;
         }
 
-        result.known_tokens.token_ids = witness.token_ids;
+        result.known_tokens.merkle.token_ids = witness.token_ids;
 
-        #[cfg(feature = "std")]
+        // init balances witness tokerns id initial hashes
         let _ = result.take_witness();
 
         return Some(result);
     }
 
     pub fn get_root(&self) -> Hash {
-        return hash_pair(self.balances.root(), &self.known_tokens.merkle_value());
+        return hash_pair(
+            self.balances.root(),
+            &self.known_tokens.merkle.merkle_value(),
+        );
     }
+}
 
-    pub fn get_balance(&self, account: AccountId, token_id: TokenId) -> Option<u64> {
+impl StateOps for State {
+    fn get_balance(&self, account: AccountId, token_id: TokenId) -> Option<u64> {
         let to_key = token_ledger::api::balance_key(token_id, &account);
         self.balances.get(to_key.as_slice()).cloned()
     }
 
-    pub fn set_balance(&mut self, account: AccountId, token_id: TokenId, balance: u64) {
+    fn set_balance(&mut self, account: AccountId, token_id: TokenId, balance: u64) {
         let to_key = token_ledger::api::balance_key(token_id, &account);
         if !self.balances.set(to_key.to_vec(), balance) {
             unimplemented!("error on key collision");
         }
     }
 
-    pub fn known_tokens_contains(&self, token_id: TokenId) -> bool {
-        // not registering in witness as known token is always part of it.
-        return self.known_tokens.token_ids.contains(&token_id);
+    fn known_tokens_contains(&self, token_id: TokenId) -> bool {
+        // not registering witness: always pass all tokens to witness
+        self.known_tokens.merkle.token_contains(token_id)
     }
 
-    pub fn known_tokens_push(&mut self, token_id: TokenId) {
-        self.known_tokens.push_token(token_id);
+    fn known_tokens_push(&mut self, token_id: TokenId) {
+        self.known_tokens.merkle.push_token(token_id)
     }
 }
 
-trait ValueTraits: Clone + Decode + Encode + MerkleValue {}
+#[derive(Default)]
+pub struct Tree {
+    merkle: MerkleTree,
+    initial_hashes: BTreeMap<TreeIndex, Hash>,
+    witness: RefCell<BTreeMap<TreeIndex, Hash>>,
+}
 
-impl<V: Clone + Decode + Encode + MerkleValue> ValueTraits for V {}
+impl Tree {
+    fn get_hash(&self, ix: TreeIndex) -> &Hash {
+        let hash = self.merkle.get_hash(ix);
+        if hash == &EMPTY_HASH {
+            return hash;
+        }
+
+        let witness_hash = self.initial_hashes.get(&ix).unwrap_or(&EMPTY_HASH);
+        if witness_hash != &EMPTY_HASH {
+            self.witness.borrow_mut().insert(ix, *witness_hash);
+        }
+
+        return hash;
+    }
+
+    fn root(&self) -> &Hash {
+        return self.get_hash((TREE_HASHES - 1) as TreeIndex);
+    }
+
+    // expect ix of a value
+    // Note that if state is modified, we do not need to record,
+    // but since this state is append only and modify read existing
+    // value, this would just not change the witness state.
+    fn record_witness_access(&self, ix: TreeIndex) {
+        let mut at = ix;
+        let mut offset: TreeIndex = 0;
+        for depth in 0..TREE_DEPTH {
+            if at % 2 == 0 {
+                self.get_hash(offset + at + 1);
+            } else {
+                self.get_hash(offset + at - 1);
+            }
+            offset += 1 << (TREE_DEPTH - depth);
+            at = at / 2;
+        }
+    }
+
+    pub fn insert(&mut self, ix: TreeIndex, value_hash: Hash) {
+        self.record_witness_access(ix);
+        self.merkle.insert(ix, value_hash);
+    }
+
+    fn take_witness(&mut self) -> BTreeMap<TreeIndex, Hash> {
+        let hashes = std::mem::replace(
+            self.witness.get_mut(),
+            BTreeMap::<TreeIndex, Hash>::default(),
+        );
+        // update for next run
+        self.initial_hashes = self.merkle.hashes.clone();
+        hashes
+    }
+}
 
 struct StateTree<V: ValueTraits> {
     // TODO rem (TreeIndex is always hashextract of key...), yet avoid checking for existing key
     indexes: BTreeMap<Vec<u8>, TreeIndex>,
     values: BTreeMap<TreeIndex, Value<V>>,
-    tree: MerkleTree,
-    // No consistency, just rewrite all on drop.
-    #[cfg(feature = "std")]
+    tree: Tree,
     persist: Option<std::fs::File>,
-    #[cfg(feature = "std")]
     witness_values: RefCell<BTreeMap<Vec<u8>, V>>,
 }
 
 impl<V: ValueTraits> Drop for StateTree<V> {
     fn drop(&mut self) {
-        #[cfg(feature = "std")]
         self.serialize();
     }
 }
@@ -232,16 +174,13 @@ impl<V: ValueTraits> Default for StateTree<V> {
             indexes: Default::default(),
             values: Default::default(),
             tree: Default::default(),
-            #[cfg(feature = "std")]
             persist: None,
-            #[cfg(feature = "std")]
             witness_values: Default::default(),
         }
     }
 }
 
 impl<V: ValueTraits> StateTree<V> {
-    #[cfg(feature = "std")]
     fn from_file(mut file: std::fs::File) -> Self {
         let mut result = Self::default();
         let mut buf_reader = codec::IoReader(std::io::BufReader::new(&mut file));
@@ -256,7 +195,6 @@ impl<V: ValueTraits> StateTree<V> {
 
         result
     }
-    #[cfg(feature = "std")]
     fn serialize(&mut self) {
         let Some(file) = self.persist.as_mut() else {
             return;
@@ -272,16 +210,14 @@ impl<V: ValueTraits> StateTree<V> {
 
     fn get_value(&self, k: &[u8]) -> Option<&Value<V>> {
         let Some(i) = self.indexes.get(k) else {
-            #[cfg(feature = "std")]
             {
                 let ix = tree_index_from_key(&k);
-                self.tree.witness_access(ix);
+                self.tree.record_witness_access(ix);
             }
             return None;
         };
 
         let v = self.values.get(i);
-        #[cfg(feature = "std")]
         {
             if let Some(value_v) = v.as_ref() {
                 if !self.witness_values.borrow().contains_key(&value_v.key) {
@@ -290,7 +226,7 @@ impl<V: ValueTraits> StateTree<V> {
                         .insert(value_v.key.clone(), value_v.value.clone());
                 }
             }
-            self.tree.witness_access(*i);
+            self.tree.record_witness_access(*i);
         }
         return v;
     }
@@ -311,7 +247,6 @@ impl<V: ValueTraits> StateTree<V> {
                 existing.value = v;
                 self.tree.insert(ix, existing.merkle_value());
             } else {
-                #[cfg(feature = "std")]
                 let _ = self.get(k.as_slice()); // register witness (we access value to check key).
                 return false;
             }
@@ -332,24 +267,28 @@ impl<V: ValueTraits> StateTree<V> {
         witness_hashes: &[(TreeIndex, Hash)],
         witness_key_values: Vec<(Vec<u8>, V)>,
     ) -> Option<Self> {
-        let mut result = Self::default();
-        // insert all witness hashes
-        for (index, hash) in witness_hashes.iter() {
-            result.tree.hashes.insert(*index, *hash);
-        }
-        let witness_root = *result.root();
-        for (key, value) in witness_key_values.into_iter() {
-            result.set(key, value);
-            // set should not change root injected from hashes.
-            if result.root() != &witness_root {
-                return None;
-            }
-        }
+        let token_ledger_state_v2::merkle::StateTree {
+            tree,
+            values,
+            indexes,
+        } = token_ledger_state_v2::merkle::StateTree::init_from_witness(
+            witness_hashes,
+            witness_key_values,
+        )?;
 
-        Some(result)
+        Some(Self {
+            indexes,
+            values,
+            tree: Tree {
+                initial_hashes: tree.hashes.clone(),
+                witness: Default::default(),
+                merkle: tree,
+            },
+            persist: None,
+            witness_values: Default::default(),
+        })
     }
 
-    #[cfg(feature = "std")]
     fn take_witness(&mut self) -> (BTreeMap<TreeIndex, Hash>, BTreeMap<Vec<u8>, V>) {
         let hashes = self.tree.take_witness();
         let values = std::mem::replace(
@@ -363,94 +302,39 @@ impl<V: ValueTraits> StateTree<V> {
 
 #[derive(Default)]
 pub struct KnownTokens {
-    token_ids: Vec<TokenId>,
-    #[cfg(feature = "std")]
+    merkle: token_ledger_state_v2::merkle::KnownTokens,
     persist: Option<std::fs::File>,
-    #[cfg(feature = "std")]
     witness: Vec<TokenId>,
 }
 
-impl Drop for KnownTokens {
-    fn drop(&mut self) {
-        #[cfg(feature = "std")]
-        self.serialize();
-    }
-}
-
-impl MerkleValue for KnownTokens {
-    fn merkle_value(&self) -> Hash {
-        if self.token_ids.len() > 0 {
-            hash_sequence(self.token_ids.as_slice())
-        } else {
-            EMPTY_HASH
-        }
-    }
-}
-
 impl KnownTokens {
-    #[cfg(feature = "std")]
     fn from_file(mut file: std::fs::File) -> Self {
         let mut result = Self::default();
         let mut buf_reader = codec::IoReader(std::io::BufReader::new(&mut file));
-        result.token_ids = Decode::decode(&mut buf_reader).unwrap();
+        result.merkle.token_ids = Decode::decode(&mut buf_reader).unwrap();
         result.persist = Some(file);
         result
     }
 
-    #[cfg(feature = "std")]
     fn serialize(&mut self) {
         let Some(file) = self.persist.as_mut() else {
             return;
         };
         file.seek(std::io::SeekFrom::Start(0)).unwrap();
-        let encoded = self.token_ids.encode();
+        let encoded = self.merkle.token_ids.encode();
         dbg!("serializing {} token bytes", encoded.len());
         file.write_all(encoded.as_slice()).unwrap();
         file.flush().unwrap();
     }
 
-    fn push_token(&mut self, token_id: TokenId) {
-        if !self.token_ids.iter().any(|t| t == &token_id) {
-            self.token_ids.push(token_id);
-        }
-    }
-
-    #[cfg(feature = "std")]
     fn take_witness(&mut self) -> Vec<TokenId> {
-        let token_ids = std::mem::take(&mut self.witness);
-        self.witness = self.token_ids.clone();
-        token_ids
+        std::mem::replace(&mut self.witness, self.merkle.token_ids.clone())
     }
 }
 
-pub type Balance = u64;
-
-impl MerkleValue for Balance {
-    fn merkle_value(&self) -> Hash {
-        let mut result = [0; 32];
-        result[0..8].copy_from_slice(u64::to_le_bytes(*self).as_slice());
-        result
-    }
-}
-
-impl MerkleValue for TokenId {
-    fn merkle_value(&self) -> Hash {
-        let mut result = [0; 32];
-        // could actually put 8 tokenid per hash_value, no need here
-        result[0..4].copy_from_slice(u32::to_le_bytes(*self).as_slice());
-        result
-    }
-}
-
-#[derive(Clone, Encode, Decode)]
-pub struct Value<V> {
-    value: V,
-    key: Vec<u8>,
-}
-
-impl<V: MerkleValue> MerkleValue for Value<V> {
-    fn merkle_value(&self) -> Hash {
-        hash_multiple(&[self.value.merkle_value().as_slice(), self.key.as_slice()])
+impl Drop for KnownTokens {
+    fn drop(&mut self) {
+        self.serialize();
     }
 }
 
@@ -471,6 +355,7 @@ mod tests {
     #[test]
     fn create_token_and_distribute() {
         let mut state: State = Default::default();
+        assert!([0; 32] == state.get_root());
 
         state.set_balance([1; 32], 1, 10);
 

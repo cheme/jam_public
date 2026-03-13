@@ -1,4 +1,4 @@
-#![cfg_attr(not(feature = "std"), no_std)]
+#![no_std]
 
 //! This is a simple implementation of an example, as part of a tutorial on how to build services
 //! for JAM. Although it demonstrates the basic concepts and techniques, it should is not
@@ -16,7 +16,6 @@ use jam_types::{CoreIndex, Hash, ServiceId, Slot, WorkOutput, WorkPackageHash, W
 
 pub use refinement::Payload as RefinePayload;
 mod accumulation;
-pub mod external_client;
 mod refinement;
 
 /// The Token Ledger Service

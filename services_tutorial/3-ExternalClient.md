@@ -78,6 +78,17 @@ BELLOW is draft
 
 TODO document what happens with jamt item command (workpackage produce, data in lake...).
 
+
+-> create a workpackage with given workitem, submit it to rpc of node0, then node0 also do submit_encode_work_package locally, then package is proxied to designated guarantors (dynamic workpackage submission protocol). receive_direct_work_package -> IncomingWorkPackageData::WorkPackage -> work_package_submitter.rs 'submit' 
+-> issue_guarantee : do_issue_guarantee doing the work
+
+TODO have proof in an external preimage that get read from refine!!
+
+
+wp for service dep target service bootstrap service
+for actual call target new service
+-> TODO have a targe service bootstrap to create a preimage that get loaded by refinement package!! so we reduce work package size, but creating preimage requires the reduced size of work package gain...  -> yet good to be able to do two steps refinement properly!!
+
 TODO next content is just a draft and unimplemented.
 
 ## Concurrent workitems

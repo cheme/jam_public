@@ -1,7 +1,6 @@
 //! accumulation
 
-use crate::external_client::Hash;
-#[cfg(not(feature = "std"))]
+use token_ledger_state_v2::Hash;
 use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use jam_pvm_common::accumulate::{get, set};
@@ -9,20 +8,15 @@ use jam_pvm_common::{error, info, warn};
 use jam_types::AccumulateItem;
 use jam_types::WorkItemRecord;
 
-#[cfg(feature = "single_payload")]
 #[derive(Clone, Debug, Encode, Decode)]
 pub struct Operation {
     pub previous_root: Hash,
     pub new_root: Hash,
 }
 
-#[cfg(feature = "single_payload")]
 type ItemAccumulate = Result<Option<Hash>, ()>;
 
 pub fn on_accumulate_items(items: Vec<AccumulateItem>) {
-    #[cfg(not(all(feature = "single_payload", feature = "drop_all_on_fail")))]
-    unimplemented!();
-
     let mut items_result = Ok(None);
 
     for item in items {
